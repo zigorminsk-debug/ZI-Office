@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/paper">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:title="Облака" android:titleTextColor="#FFFFFF" android:navigationIcon="?attr/homeAsUpIndicator"/>
+    <TextView android:id="@+id/googleStatus" android:textColor="@color/ink" android:padding="8dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnGooglePick" android:text="Подключить папку Google Drive" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnGoogleWeb" android:text="Открыть Drive в браузере" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnConnect" android:text="Файлы Google Drive" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnGoogleOut" android:text="Отключить Google" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <TextView android:id="@+id/yandexStatus" android:textColor="@color/ink" android:padding="8dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnYandexPick" android:text="Подключить папку Яндекс Диска" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnYandexWeb" android:text="Открыть Яндекс Диск в браузере" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnChange" android:text="Файлы Яндекс Диска" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnYandexOut" android:text="Отключить Яндекс" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+</LinearLayout>

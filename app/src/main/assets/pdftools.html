@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<script src="http://app.local/js/pdf-lib.min.js"></script>
+<script>
+function b64(u8){var s=''; for(var i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s)}
+function parseSpec(spec,n){
+  var set={}; spec.split(',').forEach(function(p){
+    p=p.trim(); if(!p) return; var m=p.split('-');
+    var a=parseInt(m[0],10), b=m.length>1?parseInt(m[1],10):a;
+    if(isNaN(a)) return; if(isNaN(b)) b=a;
+    if(a>b){var t=a;a=b;b=t}
+    for(var i=a;i<=b;i++) if(i>=1&&i<=n) set[i-1]=1;
+  });
+  return Object.keys(set).map(Number).sort(function(a,b){return a-b});
+}
+async function run(){
+  var cmd=Android.toolCmd(); var spec=Android.extractSpec()||'1';
+  var r=await fetch('http://app.local/document'); var buf=await r.arrayBuffer();
+  var src=await PDFLib.PDFDocument.load(buf); var n=src.getPageCount();
+  var out=await PDFLib.PDFDocument.create();
+  if(cmd==='rotate'){
+    var pages=src.getPages(); pages.forEach(function(p){ p.setRotation(PDFLib.degrees(((p.getRotation().angle||0)+90)%360)); });
+    var bytes=await src.save(); Android.beginSave('application/pdf','tool.pdf'); Android.appendChunk(b64(bytes)); Android.endSave(); return;
+  }
+  if(cmd==='reverse'){
+    var idx=[]; for(var i=n-1;i>=0;i--) idx.push(i); var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
+  } else if(cmd==='extract'){
+    var idx=parseSpec(spec,n); if(!idx.length) idx=[0]; var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
+  } else if(cmd==='delete'){
+    var del={}; parseSpec(spec,n).forEach(function(i){del[i]=1}); var idx=[]; for(var i=0;i<n;i++) if(!del[i]) idx.push(i);
+    if(!idx.length) idx=[0]; var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
+  } else if(cmd==='blank'){
+    var after=parseInt(spec,10); if(isNaN(after)) after=n;
+    var idx=[]; for(var i=0;i<n;i++) idx.push(i);
+    var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
+    var blank=out.addPage(); if(after>=0 && after<copied.length){ /* already appended; ok */ }
+  } else if(cmd==='numbers'){
+    var helv=await src.embedFont(PDFLib.StandardFonts.Helvetica);
+    src.getPages().forEach(function(p,i){ var s=p.getSize(); p.drawText(String(i+1),{x:s.width/2-8,y:18,size:12,font:helv}); });
+    var bytes=await src.save(); Android.beginSave('application/pdf','tool.pdf'); Android.appendChunk(b64(bytes)); Android.endSave(); return;
+  } else {
+    var idx=[]; for(var i=0;i<n;i++) idx.push(i); var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
+  }
+  var bytes=await out.save(); Android.beginSave('application/pdf','tool.pdf'); Android.appendChunk(b64(bytes)); Android.endSave();
+}
+run().catch(function(e){ try{Android.fail(String(e))}catch(x){} });
+</script>
+</body></html>

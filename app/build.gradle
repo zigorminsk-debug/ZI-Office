@@ -1,0 +1,36 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.docreader.app'
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.docreader.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 26
+        versionName "2.23"
+        ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
+    }
+    signingConfigs {
+        release {
+            storeFile file("myoffice-release.p12")
+            storePassword "MyOffice-ZI-3371412"
+            keyAlias "myoffice"
+            keyPassword "MyOffice-ZI-3371412"
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+        debug { signingConfig signingConfigs.release }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { checkReleaseBuilds false; abortOnError false }
+    packaging { jniLibs { useLegacyPackaging true } }
+}
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.8.0'
+}

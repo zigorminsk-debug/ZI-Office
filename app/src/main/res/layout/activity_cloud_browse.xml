@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/paper">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:titleTextColor="#FFFFFF" android:navigationIcon="?attr/homeAsUpIndicator"/>
+    <TextView android:id="@+id/pathView" android:padding="8dp" android:textColor="@color/muted" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnUp" android:text="Назад" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+        <com.google.android.material.button.MaterialButton android:id="@+id/btnSaf" android:text="Выбрать папку" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+    </LinearLayout>
+    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent">
+        <LinearLayout android:id="@+id/fileList" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    </ScrollView>
+</LinearLayout>

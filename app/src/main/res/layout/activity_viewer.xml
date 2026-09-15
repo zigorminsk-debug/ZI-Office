@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/paper">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:titleTextColor="#FFFFFF" android:navigationIcon="?attr/homeAsUpIndicator"/>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <com.docreader.app.PdfZoomView android:id="@+id/pdfZoom" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone"/>
+        <com.docreader.app.ZoomSurface android:id="@+id/webZoom" android:layout_width="match_parent" android:layout_height="match_parent">
+            <WebView android:id="@+id/web" android:layout_width="match_parent" android:layout_height="match_parent"/>
+        </com.docreader.app.ZoomSurface>
+        <WebView android:id="@+id/toolWeb" android:layout_width="1dp" android:layout_height="1dp" android:visibility="invisible"/>
+    </FrameLayout>
+    <HorizontalScrollView android:id="@+id/readerBar" android:visibility="gone" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/card">
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:padding="6dp">
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnTtsPlay" android:text="▶ Вслух" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnTtsPause" android:text="⏸" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnTtsStop" android:text="⏹" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnSlow" android:text="−" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnFast" android:text="+" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnAminus" android:text="A−" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnAplus" android:text="A+" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnCloseRead" android:text="Закрыть" android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+        </LinearLayout>
+    </HorizontalScrollView>
+</LinearLayout>

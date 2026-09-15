@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZI Office</string>
+    <string name="developer_name">Zakharevich Igor</string>
+    <string name="developer_phone">+375293371412</string>
+    <string name="developer_phone_pretty">+375 29 337 14 12</string>
+    <string name="version">2.23</string>
+    <string name="unsupported">Этот формат не поддерживается</string>
+</resources>

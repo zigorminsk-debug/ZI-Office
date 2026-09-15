@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#f4f1ea;color:#1c1917}
+body.night{background:#121212;color:#f5f5f4}
+#bar{display:flex;gap:6px;padding:8px;flex-wrap:wrap;background:#fff;position:sticky;top:0;z-index:2}
+body.night #bar{background:#1c1c1c}
+#doc{padding:12px;line-height:1.55;font-size:18px}
+table{border-collapse:collapse;width:100%;background:#fff}
+td,th{border:1px solid #ccc;padding:6px;font-size:13px}
+.slide{margin:12px 0;padding:16px;background:#fff;min-height:180px;box-shadow:0 1px 4px #0002}
+#q{flex:1;min-width:120px}
+button{padding:6px 10px}
+</style></head>
+<body>
+<div id="bar">
+<input id="q" placeholder="Найти">
+<button id="findBtn" onclick="findNext()">Найти</button>
+<button onclick="toggleNight()">Тема</button>
+</div>
+<div id="doc">Загрузка…</div>
+<script src="http://app.local/js/pdf.min.js"></script>
+<script src="http://app.local/js/mammoth.browser.min.js"></script>
+<script src="http://app.local/js/xlsx.full.min.js"></script>
+<script src="http://app.local/js/jszip.min.js"></script>
+<script>
+try{pdfjsLib.GlobalWorkerOptions.workerSrc='http://app.local/js/pdf.worker.min.js'}catch(e){}
+var kind=(window.Android&&Android.kind())||'pdf';
+var isNew=window.Android&&Android.isNew();
+var night=window.Android&&Android.isNight();
+if(night) document.body.classList.add('night');
+function setReadSize(px){document.getElementById('doc').style.fontSize=px+'px'}
+function setReaderMode(on){document.getElementById('bar').style.display=on?'none':'flex'}
+function toggleNight(){document.body.classList.toggle('night')}
+function showBookmarks(){try{var b=JSON.parse(Android.getBookmarks()||'[]');alert('Закладки: '+(b.join(', ')||'нет'))}catch(e){}}
+function exportDocument(){
+  try{
+    Android.beginSave('text/html','document.html');
+    var html=document.getElementById('doc').innerHTML;
+    Android.appendChunk(btoa(unescape(encodeURIComponent('<!DOCTYPE html><html><body>'+html+'</body></html>'))));
+    Android.endSave();
+  }catch(e){if(window.Android)Android.fail('save '+e)}
+}
+function startReadAloud(){var t=document.getElementById('doc').innerText||''; if(window.Android) Android.onReadText(t)}
+function findNext(){
+  var q=document.getElementById('q').value; if(!q) return;
+  if(window.find) window.find(q);
+}
+async function loadBuf(){
+  if(isNew){
+    if(kind==='excel'){document.getElementById('doc').innerHTML='<table><tr><th>A</th><th>B</th><th>C</th></tr><tr><td contenteditable> </td><td contenteditable></td><td contenteditable></td></tr></table>';}
+    else document.getElementById('doc').innerHTML='<p contenteditable>Новый документ</p>';
+    if(window.Android) Android.ready(); return;
+  }
+  var r=await fetch('http://app.local/document'); var buf=await r.arrayBuffer();
+  if(kind==='pdf') return renderPdf(buf);
+  if(kind==='word') return renderWord(buf);
+  if(kind==='excel') return renderExcel(buf);
+  if(kind==='ppt') return renderPpt(buf);
+  if(kind==='text') return renderText(buf);
+  document.getElementById('doc').textContent='Неизвестный формат';
+}
+async function renderPdf(buf){
+  var pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  var host=document.getElementById('doc'); host.innerHTML='';
+  for(var i=1;i<=pdf.numPages;i++){
+    var page=await pdf.getPage(i); var vp=page.getViewport({scale:1.3});
+    var c=document.createElement('canvas'); c.width=vp.width; c.height=vp.height; c.style.width='100%';
+    await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise; host.appendChild(c);
+  }
+  if(window.Android) Android.ready();
+}
+async function renderWord(buf){
+  try{
+    var res=await mammoth.convertToHtml({arrayBuffer:buf});
+    document.getElementById('doc').innerHTML=res.value||'<p>(пусто)</p>';
+  }catch(e){document.getElementById('doc').textContent='Ошибка Word: '+e}
+  if(window.Android) Android.ready();
+}
+function skipJunk(u8){
+  if(!u8||u8.length<4) return u8;
+  if(u8[0]===0xEF&&u8[1]===0xBB&&u8[2]===0xBF) return u8.subarray(3);
+  if(u8[0]===0x00&&u8[1]===0x05&&u8[2]===0x16&&u8[3]===0x07){
+    for(var i=0;i<Math.min(u8.length-4,8192);i++) if(u8[i]===0x50&&u8[i+1]===0x4B&&(u8[i+2]===0x03||u8[i+2]===0x05||u8[i+2]===0x07)) return u8.subarray(i);
+  }
+  for(var j=0;j<Math.min(64,u8.length-4);j++) if(u8[j]===0x50&&u8[j+1]===0x4B&&u8[j+2]===0x03&&u8[j+3]===0x04) return u8.subarray(j);
+  return u8;
+}
+function readWorkbook(u8){
+  var opts=[{type:'array',cellDates:true,dense:false},{type:'array',raw:true},{type:'binary'}];
+  var last=null;
+  for(var i=0;i<opts.length;i++){
+    try{
+      var data=opts[i].type==='binary'?Array.prototype.map.call(u8,function(c){return String.fromCharCode(c)}).join(''):u8;
+      return XLSX.read(data, opts[i]);
+    }catch(e){ last=e; }
+  }
+  try{ return XLSX.read(u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength),{type:'arraybuffer',cellDates:true}); }catch(e){ last=e; }
+  throw last||new Error('read');
+}
+function sheetHtml(ws){
+  if(!ws) return '<p>(пустой лист)</p>';
+  try{ return XLSX.utils.sheet_to_html(ws,{editable:false}); }catch(e){
+    var csv=''; try{ csv=XLSX.utils.sheet_to_csv(ws); }catch(e2){ return '<p>Не удалось показать лист</p>'; }
+    var rows=csv.split(/\r?\n/).map(function(line){
+      return '<tr>'+line.split(',').map(function(c){return '<td>'+c.replace(/[&<>]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x]})+'</td>';}).join('')+'</tr>';
+    }).join('');
+    return '<table>'+rows+'</table>';
+  }
+}
+async function renderExcel(buf){
+  var host=document.getElementById('doc');
+  try{
+    var u8=skipJunk(new Uint8Array(buf));
+    if(typeof JSZip!=='undefined'){
+      try{
+        var zip=await JSZip.loadAsync(u8);
+        if(zip.file('EncryptedPackage')||zip.file('encryption.xml')){
+          host.innerHTML='<p>Таблица защищена паролем. Сохраните копию без пароля в Excel / Numbers.</p>';
+          if(window.Android) Android.ready(); return;
+        }
+      }catch(e){}
+    }
+    var wb=readWorkbook(u8);
+    if(!wb||!wb.SheetNames||!wb.SheetNames.length){
+      host.innerHTML='<p>В файле нет листов. Если это Numbers — экспортируйте в Excel (.xlsx).</p>';
+      if(window.Android) Android.ready(); return;
+    }
+    var html='';
+    wb.SheetNames.forEach(function(n){ html+='<h3>'+n+'</h3>'+sheetHtml(wb.Sheets[n]); });
+    host.innerHTML=html||'<p>(пусто)</p>';
+  }catch(e){
+    host.innerHTML='<p>Не удалось открыть таблицу с macOS/Excel.</p><p style="color:#78716c;font-size:14px">'+String(e)+'</p><p>Попробуйте в Excel: Файл → Сохранить как → Книга Excel (.xlsx).</p>';
+    if(window.Android) Android.fail('Excel: '+e);
+  }
+  if(window.Android) Android.ready();
+}
+async function renderPpt(buf){
+  try{
+    var zip=await JSZip.loadAsync(buf); var slides=[];
+    zip.folder('ppt/slides').forEach(function(p,f){ if(p.endsWith('.xml')&&!p.includes('rels')) slides.push(f); });
+    slides.sort(function(a,b){return a.name.localeCompare(b.name,'en',{numeric:true})});
+    var html='';
+    for(var i=0;i<slides.length;i++){
+      var xml=await slides[i].async('string');
+      var texts=Array.from(xml.matchAll(/<a:t[^>]*>([^<]*)<\/a:t>/g)).map(function(m){return m[1]}).filter(Boolean);
+      html+='<div class="slide"><h3>Слайд '+(i+1)+'</h3><p>'+texts.join('<br>')+'</p></div>';
+    }
+    document.getElementById('doc').innerHTML=html||'<p>Нет слайдов</p>';
+  }catch(e){document.getElementById('doc').textContent='Ошибка PPT: '+e}
+  if(window.Android) Android.ready();
+}
+function renderText(buf){
+  var t=new TextDecoder('utf-8').decode(buf);
+  document.getElementById('doc').innerHTML='<pre style="white-space:pre-wrap">'+t.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})+'</pre>';
+  if(window.Android) Android.ready();
+}
+loadBuf().catch(function(e){document.getElementById('doc').textContent='Ошибка: '+e; if(window.Android) Android.fail(String(e))});
+</script>
+</body></html>

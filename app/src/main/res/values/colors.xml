@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="teal_700">#0F766E</color>
+    <color name="teal_900">#134E4A</color>
+    <color name="paper">#F7F4EE</color>
+    <color name="ink">#1C1917</color>
+    <color name="muted">#78716C</color>
+    <color name="card">#FFFFFF</color>
+    <color name="pdf">#B91C1C</color>
+    <color name="word">#1D4ED8</color>
+    <color name="excel">#15803D</color>
+    <color name="ppt">#C2410C</color>
+</resources>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_zoomin" android:title="Крупнее" app:showAsAction="never"/>
+    <item android:id="@+id/action_zoomout" android:title="Мельче" app:showAsAction="never"/>
+    <item android:id="@+id/action_page" android:title="Страница" app:showAsAction="never"/>
+    <item android:id="@+id/action_find" android:title="Найти" app:showAsAction="never"/>
+    <item android:id="@+id/action_ocr" android:title="Распознать текст" app:showAsAction="never"/>
+    <item android:id="@+id/action_read" android:title="Чтение" app:showAsAction="never"/>
+    <item android:id="@+id/action_tts" android:title="Вслух" app:showAsAction="never"/>
+    <item android:id="@+id/action_rotate" android:title="Повернуть" app:showAsAction="never"/>
+    <item android:id="@+id/action_extract" android:title="Извлечь страницы" app:showAsAction="never"/>
+    <item android:id="@+id/action_delete" android:title="Удалить страницы" app:showAsAction="never"/>
+    <item android:id="@+id/action_blank" android:title="Пустая страница" app:showAsAction="never"/>
+    <item android:id="@+id/action_reverse" android:title="Обратный порядок" app:showAsAction="never"/>
+    <item android:id="@+id/action_numbers" android:title="Номера страниц" app:showAsAction="never"/>
+    <item android:id="@+id/action_save" android:title="Сохранить" app:showAsAction="never"/>
+    <item android:id="@+id/action_cloud" android:title="В облако" app:showAsAction="never"/>
+    <item android:id="@+id/action_share" android:title="Отправить" app:showAsAction="never"/>
+    <item android:id="@+id/action_print" android:title="Печать" app:showAsAction="never"/>
+    <item android:id="@+id/action_night" android:title="Тема" app:showAsAction="never"/>
+    <item android:id="@+id/action_bookmark" android:title="Закладки" app:showAsAction="never"/>
+</menu>

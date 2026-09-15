@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:padding="16dp" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/paper">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:title="Скан в PDF" android:titleTextColor="#FFFFFF" android:navigationIcon="?attr/homeAsUpIndicator"/>
+    <TextView android:text="Сделайте фото страниц, затем «Готово»." android:textColor="@color/ink" android:padding="12dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnShot" android:text="Снимок" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnDone" android:text="Готово — PDF" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+</LinearLayout>

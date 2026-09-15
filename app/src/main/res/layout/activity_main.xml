@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:background="@color/paper" android:layout_width="match_parent" android:layout_height="match_parent">
+    <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:title="@string/app_name" android:titleTextColor="#FFFFFF"/>
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp">
+        <LinearLayout android:orientation="horizontal" android:layout_width="wrap_content" android:layout_height="wrap_content">
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnOpen" android:text="Открыть" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnNewWord" android:text="Word" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnNewExcel" android:text="Excel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnScan" android:text="Скан" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnMerge" android:text="Объединить" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnCloud" android:text="Облако" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnNight" android:text="Тема" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnDefault" android:text="По умолчанию" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+        </LinearLayout>
+    </HorizontalScrollView>
+    <TextView android:id="@+id/emptyBox" android:text="Нет недавних файлов. Нажмите «Открыть»." android:padding="24dp" android:textColor="@color/muted" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:id="@+id/recentList" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+    </ScrollView>
+    <com.google.android.material.button.MaterialButton android:id="@+id/btnCall" android:text="Zakharevich Igor · +375 29 337 14 12" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+</LinearLayout>

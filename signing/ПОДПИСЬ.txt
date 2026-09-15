@@ -1,0 +1,13 @@
+Постоянный ключ подписи My Office
+=================================
+Храните этот файл и myoffice-release.p12 ВМЕСТЕ.
+Без этого ключа нельзя выпускать обновления того же приложения.
+
+Файл ключа:  myoffice-release.p12
+Тип:         PKCS12
+Alias:       myoffice
+Пароль хранилища:  MyOffice-ZI-3371412
+Пароль ключа:      MyOffice-ZI-3371412
+Срок:        10000 дней (~27 лет)
+Владелец:    CN=Zakharevich Igor, OU=My Office, O=Zakharevich Igor, L=Minsk, ST=Minsk, C=BY
+Package:     com.docreader.app
