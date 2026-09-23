@@ -110,7 +110,7 @@ jobs:
 
       - name: Check release token
         if: ${{ secrets.RELEASE_TOKEN == '' }}
-        run: echo "::warning::Секрет RELEASE_TOKEN не задан (Settings -> Secrets and variables -> Actions) — APK собран, но релиз не опубликован. Инструкция: АВТООБНОВЛЕНИЕ.md"
+        run: 'echo "::warning::Секрет RELEASE_TOKEN не задан (Settings -> Secrets and variables -> Actions) — APK собран, но релиз не опубликован. Инструкция: АВТООБНОВЛЕНИЕ.md"'
 
       - name: Publish GitHub Release
         if: ${{ secrets.RELEASE_TOKEN != '' }}
