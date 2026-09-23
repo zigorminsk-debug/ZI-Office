@@ -6,7 +6,11 @@ plugins { id 'com.android.application' }
 // отказывается устанавливать обновление поверх старой версии.
 // CI может переопределить имя версии без правки файла:
 //   ./gradlew assembleRelease -PversionName=2.25
-def appVersionName = (findProperty('versionName') ?: '2.23').toString().replaceFirst(/^v/, '')
+// ---- ВЕРСИЯ ПРИЛОЖЕНИЯ: менять номер только в этой строке ----
+def appVersionName = "2.23"
+// CI может переопределить номер, не трогая файл: ./gradlew ... -PversionName=2.24
+if (project.hasProperty('versionName')) appVersionName = project.property('versionName').toString()
+appVersionName = appVersionName.replaceFirst(/^v/, '')
 def vParts = appVersionName.tokenize('.').collect { it.replaceAll(/[^0-9].*$/, '') }
 def appVersionCode = (vParts.size() > 0 && vParts[0] ? vParts[0].toInteger() : 0) * 10000 +
         (vParts.size() > 1 && vParts[1] ? vParts[1].toInteger() : 0) * 100 +

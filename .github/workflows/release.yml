@@ -80,8 +80,8 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           set -e
-          BASE=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle | head -1 || true)
-          if [ -z "$BASE" ]; then echo "::error::versionName не найден в app/build.gradle"; exit 1; fi
+          BASE=$(grep -oP '^def appVersionName = "\K[^"]+' app/build.gradle | head -1 || true)
+          if [ -z "$BASE" ]; then echo "::error::не найден номер версии в app/build.gradle (строка: def appVersionName = \"...\")"; exit 1; fi
           VN="$BASE"
           if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$INPUT_VERSION" ]; then VN="$INPUT_VERSION"; fi
           if [ "$EVENT" = "push" ]; then VN="$REF_NAME"; fi

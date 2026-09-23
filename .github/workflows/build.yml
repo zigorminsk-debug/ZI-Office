@@ -70,9 +70,18 @@ jobs:
       - name: Версия и имя APK
         id: ver
         run: |
-          VN=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle | head -1 || true)
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | head -1 || true)
+          VN=""
+          if [ -n "$AAPT" ]; then
+            VN=$("$AAPT" dump badging "$APK" 2>/dev/null | grep -oP "versionName='\K[^']+" | head -1 || true)
+          fi
+          if [ -z "$VN" ]; then
+            VN=$(grep -oP '^def appVersionName = "\K[^"]+' app/build.gradle | head -1 || true)
+          fi
           echo "version=${VN:-unknown}" >> "$GITHUB_OUTPUT"
           echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Версия в APK: ${VN:-не определена}"
 
       - name: Выложить APK артефактом
         uses: actions/upload-artifact@v4
