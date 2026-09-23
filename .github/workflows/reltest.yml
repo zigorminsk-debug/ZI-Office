@@ -23,4 +23,4 @@ jobs:
     steps:
       - name: Check release token
         if: ${{ secrets.RELEASE_TOKEN == '' }}
-        run: 'echo "token not set"'
+        run: echo ok
