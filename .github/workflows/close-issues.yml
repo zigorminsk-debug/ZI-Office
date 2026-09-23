@@ -7,6 +7,9 @@ on:
     tags:
       - 'vtest-close*'
 
+permissions:
+  issues: write
+
 jobs:
   close:
     runs-on: ubuntu-latest
