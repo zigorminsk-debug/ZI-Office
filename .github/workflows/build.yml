@@ -48,4 +48,23 @@ jobs:
           sed -i 's/-XX:MaxMetaspaceSize=256m/-XX:MaxMetaspaceSize=768m/' gradle.properties
 
       - name: Build (compile check)
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # Если сборка упала, создаёт issue с хвостом лога (удобно читать/чинить)
+      - name: Report failure (issue)
+        if: failure()
+        run: |
+          {
+            echo "## Ошибка сборки"
+            echo ""
+            echo "Коммит: $(git rev-parse HEAD)"
+            echo ""
+            echo '```'
+            tail -c 40000 build.log 2>/dev/null || echo "лог не сохранён"
+            echo '```'
+          } > /tmp/failbody.md
+          gh issue create --title "Сборка упала: $(git rev-parse --short HEAD)" --body-file /tmp/failbody.md
+        env:
+          GH_TOKEN: ${{ github.token }}
