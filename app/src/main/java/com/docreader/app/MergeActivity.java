@@ -37,7 +37,7 @@ public class MergeActivity extends AppCompatActivity {
                         float sc = Math.min(1f, 1400f / Math.max(1, Math.max(pw, ph)));
                         int tw = Math.max(1, Math.round(pw * sc)), th = Math.max(1, Math.round(ph * sc));
                         Bitmap bmp = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
-                        p.render(bmp, new android.graphics.RectF(0, 0, tw, th), null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); p.close();
+                        p.render(bmp, new android.graphics.Rect(0, 0, tw, th), null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); p.close();
                         android.graphics.pdf.PdfDocument.PageInfo info = new android.graphics.pdf.PdfDocument.PageInfo.Builder(tw, th, dest.getPages().size() + 1).create();
                         android.graphics.pdf.PdfDocument.Page page = dest.startPage(info); page.getCanvas().drawBitmap(bmp, 0, 0, null); dest.finishPage(page);
                         bmp.recycle(); any = true;
