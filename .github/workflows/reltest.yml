@@ -11,8 +11,14 @@ on:
         required: true
         default: ''
 
+permissions:
+  contents: write
+
 jobs:
   j:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
     steps:
       - run: echo ok
