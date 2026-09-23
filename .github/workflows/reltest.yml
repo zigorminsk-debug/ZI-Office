@@ -21,4 +21,14 @@ jobs:
     env:
       RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
     steps:
-      - run: echo ok
+      - name: Check release token
+        if: ${{ secrets.RELEASE_TOKEN == '' }}
+        run: 'echo "token not set"'
+      - name: Publish GitHub Release
+        if: ${{ secrets.RELEASE_TOKEN != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v1
+          name: test
