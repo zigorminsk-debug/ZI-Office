@@ -19,24 +19,38 @@ public class MergeActivity extends AppCompatActivity {
     }
     private void add(Uri uri) { if (uri == null) return; files.add(uri); TextView t = new TextView(this); t.setText(FileKind.name(this, uri)); t.setPadding(24, 16, 24, 16); t.setTextColor(getColor(R.color.ink)); list.addView(t); }
     private void merge() {
-        File out = new File(getExternalFilesDir(null), "merge-" + System.currentTimeMillis() + ".pdf");
+        File dir = getExternalFilesDir(null); if (dir == null) dir = getFilesDir();
+        File out = new File(dir, "merge-" + System.currentTimeMillis() + ".pdf");
+        android.graphics.pdf.PdfDocument dest = null;
         try {
-            android.graphics.pdf.PdfDocument dest = new android.graphics.pdf.PdfDocument();
+            dest = new android.graphics.pdf.PdfDocument();
+            boolean any = false;
             for (Uri u : files) {
-                try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(u, "r")) {
-                    if (pfd == null) continue; PdfRenderer r = new PdfRenderer(pfd);
+                ParcelFileDescriptor pfd = null; PdfRenderer r = null;
+                try {
+                    pfd = getContentResolver().openFileDescriptor(u, "r");
+                    if (pfd == null) continue;
+                    r = new PdfRenderer(pfd);
                     for (int i = 0; i < r.getPageCount(); i++) {
                         PdfRenderer.Page p = r.openPage(i);
-                        Bitmap bmp = Bitmap.createBitmap(Math.max(1, p.getWidth()), Math.max(1, p.getHeight()), Bitmap.Config.ARGB_8888); p.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-                        android.graphics.pdf.PdfDocument.PageInfo info = new android.graphics.pdf.PdfDocument.PageInfo.Builder(bmp.getWidth(), bmp.getHeight(), dest.getPages().size()+1).create();
+                        int pw = p.getWidth(), ph = p.getHeight();
+                        float sc = Math.min(1f, 1400f / Math.max(1, Math.max(pw, ph)));
+                        int tw = Math.max(1, Math.round(pw * sc)), th = Math.max(1, Math.round(ph * sc));
+                        Bitmap bmp = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
+                        p.render(bmp, new android.graphics.Rect(0, 0, tw, th), null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); p.close();
+                        android.graphics.pdf.PdfDocument.PageInfo info = new android.graphics.pdf.PdfDocument.PageInfo.Builder(tw, th, dest.getPages().size() + 1).create();
                         android.graphics.pdf.PdfDocument.Page page = dest.startPage(info); page.getCanvas().drawBitmap(bmp, 0, 0, null); dest.finishPage(page);
-                        bmp.recycle(); p.close();
+                        bmp.recycle(); any = true;
                     }
-                    r.close();
+                } finally {
+                    try { if (r != null) r.close(); } catch (Exception ignored) {}
+                    try { if (pfd != null) pfd.close(); } catch (Exception ignored) {}
                 }
             }
-            try (FileOutputStream fo = new FileOutputStream(out)) { dest.writeTo(fo); } dest.close();
+            if (!any) { runOnUiThread(() -> Toast.makeText(this, "Нет страниц для объединения", Toast.LENGTH_LONG).show()); return; }
+            try (FileOutputStream fo = new FileOutputStream(out)) { dest.writeTo(fo); }
             runOnUiThread(() -> ViewerActivity.openLocal(this, out, out.getName(), "pdf"));
         } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Ошибка объединения", Toast.LENGTH_LONG).show()); }
+        finally { try { if (dest != null) dest.close(); } catch (Exception ignored) {} }
     }
 }
