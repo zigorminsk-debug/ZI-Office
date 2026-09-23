@@ -36,6 +36,8 @@ public class UpdateManagerTest {
         assertFalse(UpdateManager.isNewer("abc", "2.23"));
         assertTrue(UpdateManager.isNewer("2.24", "abc"));
         assertFalse(UpdateManager.isNewer("", "2.23"));
-        assertFalse(UpdateManager.isNewer("2.23", ""));
+        // пустая локальная версия трактуется как самая старая → обновляемся
+        assertTrue(UpdateManager.isNewer("2.23", ""));
+        assertFalse(UpdateManager.isNewer("", ""));
     }
 }

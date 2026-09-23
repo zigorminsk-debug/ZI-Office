@@ -198,10 +198,11 @@ final class UpdateManager {
         } catch (Exception e) { return false; }
     }
 
-    /** Сравнение номеров версий вида 2.24 / 2.10.1 по частям. */
+    /** Сравнение номеров версий вида 2.24 / 2.10.1 по частям.
+     *  Пустые/несуффиксные части игнорируются: "v2.24" == 2.24, "2.24-beta" → 2.24. */
     static boolean isNewer(String remote, String local) {
-        String[] a = remote.split("[.\\-+v]");
-        String[] b = local.split("[.\\-+v]");
+        String[] a = parts(remote);
+        String[] b = parts(local);
         int n = Math.max(a.length, b.length);
         for (int i = 0; i < n; i++) {
             int x = i < a.length ? part(a[i]) : 0;
@@ -209,6 +210,15 @@ final class UpdateManager {
             if (x != y) return x > y;
         }
         return false;
+    }
+
+    private static String[] parts(String s) {
+        if (s == null) s = "";
+        String[] raw = s.split("[.\\-+v ]");
+        String[] out = new String[raw.length];
+        int n = 0;
+        for (String p : raw) if (!p.isEmpty()) out[n++] = p;
+        return java.util.Arrays.copyOf(out, n);
     }
 
     private static int part(String s) {
