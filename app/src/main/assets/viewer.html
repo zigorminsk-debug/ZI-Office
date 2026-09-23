@@ -138,7 +138,8 @@ async function renderExcel(buf){
 async function renderPpt(buf){
   try{
     var zip=await JSZip.loadAsync(buf); var slides=[];
-    zip.folder('ppt/slides').forEach(function(p,f){ if(p.endsWith('.xml')&&!p.includes('rels')) slides.push(f); });
+    var folder=zip.folder('ppt/slides');
+    if(folder) folder.forEach(function(p,f){ if(p.endsWith('.xml')&&!p.includes('rels')) slides.push(f); });
     slides.sort(function(a,b){return a.name.localeCompare(b.name,'en',{numeric:true})});
     var html='';
     for(var i=0;i<slides.length;i++){

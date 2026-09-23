@@ -1,0 +1,120 @@
+name: Сборка и релиз APK
+
+# Выпускает новую версию:
+#  1) собирает release-APK,
+#  2) публикует GitHub Release с APK в ПУБЛИЧНОМ репозитории
+#     (по умолчанию zigorminsk-debug/ZI-Office-Release) — оттуда приложение
+#     само предлагает обновление.
+#
+# Как выпустить версию:
+#   1. В app/build.gradle увеличить versionName (напр. "2.24") и versionCode.
+#   2. Закоммитить и на main создать тег:  git tag v2.24 && git push origin v2.24
+#      (или запустить workflow вручную: Actions -> Сборка и релиз APK -> Run workflow,
+#       указав номер версии).
+#
+# Один раз нужно подготовить: см. АВТООБНОВЛЕНИЕ.md
+#   - публичный репозиторий для релизов,
+#   - secret RELEASE_TOKEN (токен с доступом на запись к нему).
+# Имя репозитория можно переопределить переменной репозитория RELEASE_REPO
+# (Settings -> Secrets and variables -> Variables) и константой RELEASE_REPO
+# в app/src/main/java/com/docreader/app/UpdateManager.java.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Номер версии (совпадает с versionName, напр. 2.24)'
+        required: true
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /home/runner/android-sdk
+      RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        run: |
+          set -e
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/tools.zip
+          unzip -q -o /tmp/tools.zip -d "$ANDROID_HOME/cmdline-tools"
+          rm -rf "$ANDROID_HOME/cmdline-tools/latest"
+          mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Gradle memory (CI)
+        run: |
+          sed -i 's/-Xmx512m/-Xmx3g/' gradle.properties
+          sed -i 's/-XX:MaxMetaspaceSize=256m/-XX:MaxMetaspaceSize=768m/' gradle.properties
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Version
+        id: ver
+        run: |
+          VN=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
+          if [ -z "$VN" ]; then echo "::error::versionName не найден в app/build.gradle"; exit 1; fi
+          VN=${VN#v}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version }}" ]; then
+            VN=${{ github.event.inputs.version }}
+            VN=${VN#v}
+          fi
+          echo "vn=${VN}" >> "$GITHUB_OUTPUT"
+          echo "Версия: ${VN}"
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk "ZIOffice-${{ steps.ver.outputs.vn }}.apk"
+
+      - name: Release notes
+        id: notes
+        run: |
+          set -e
+          {
+            echo "## ZI Office v${{ steps.ver.outputs.vn }}"
+            echo ""
+            echo "Установите APK поверх текущей версии (подпись та же)."
+            echo ""
+            echo "### Изменения"
+            echo ""
+            PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+            if [ -n "$PREV" ]; then
+              git log "$PREV..HEAD" --no-merges --pretty='- %s' | head -40
+            else
+              git log -n 12 --no-merges --pretty='- %s' | head -12
+            fi
+          } > "$RUNNER_TEMP/NOTES.md"
+          echo "body_file=$RUNNER_TEMP/NOTES.md" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v${{ steps.ver.outputs.vn }}
+          name: ZI Office v${{ steps.ver.outputs.vn }}
+          body_path: ${{ steps.notes.outputs.body_file }}
+          files: ZIOffice-${{ steps.ver.outputs.vn }}.apk
+          draft: false
+          prerelease: false

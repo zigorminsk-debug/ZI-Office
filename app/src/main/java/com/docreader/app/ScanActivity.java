@@ -24,7 +24,8 @@ public class ScanActivity extends AppCompatActivity {
         } catch (Exception e) { Toast.makeText(this, "Камера недоступна", Toast.LENGTH_SHORT).show(); }
     }
     private void buildPdf() {
-        File out = new File(getExternalFilesDir(null), "scan-" + System.currentTimeMillis() + ".pdf");
+        File dir = getExternalFilesDir(null); if (dir == null) dir = getFilesDir();
+        File out = new File(dir, "scan-" + System.currentTimeMillis() + ".pdf");
         try {
             android.graphics.pdf.PdfDocument doc = new android.graphics.pdf.PdfDocument();
             for (File f : pages) {
@@ -34,6 +35,7 @@ public class ScanActivity extends AppCompatActivity {
                 android.graphics.pdf.PdfDocument.Page page = doc.startPage(info); page.getCanvas().drawBitmap(bmp, 0, 0, null); doc.finishPage(page);
                 if (bmp != raw) bmp.recycle(); raw.recycle();
             }
+            if (doc.getPages().size() == 0) { doc.close(); runOnUiThread(() -> Toast.makeText(this, "Не удалось обработать снимки", Toast.LENGTH_LONG).show()); return; }
             try (FileOutputStream fo = new FileOutputStream(out)) { doc.writeTo(fo); } doc.close();
             runOnUiThread(() -> ViewerActivity.openLocal(this, out, out.getName(), "pdf"));
         } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Ошибка PDF", Toast.LENGTH_LONG).show()); }

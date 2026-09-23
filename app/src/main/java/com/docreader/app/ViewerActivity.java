@@ -23,6 +23,9 @@ public class ViewerActivity extends AppCompatActivity {
     private String ocrText = "", toolCmd = "rotate", extractSpec = "1", saveMime, saveName, pendingCloud;
     private final ByteArrayOutputStream saveBuf = new ByteArrayOutputStream();
     private int readPx = 20, pdfCount; private TtsHelper tts; private final Handler main = new Handler(Looper.getMainLooper());
+    private final java.util.concurrent.ExecutorService worker = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "zi-worker"); t.setDaemon(true); return t;
+    });
     private ActivityResultLauncher<Intent> createDoc;
     public static void openLocal(Context ctx, File file, String name, String kind) {
         Intent i = new Intent(ctx, ViewerActivity.class);
@@ -63,11 +66,16 @@ public class ViewerActivity extends AppCompatActivity {
         if (webZoom != null) webZoom.setListener(s -> toolbar.setSubtitle(Math.round(s * 100) + "%"));
         setupWeb(web); setupWeb(toolWeb);
         if (!isNew) {
+            if (source == null) { Toast.makeText(this, "Нет файла для открытия", Toast.LENGTH_LONG).show(); finish(); return; }
             cacheFile = new File(getCacheDir(), "open-" + System.currentTimeMillis());
-            try (InputStream inStream = source == null ? null : getContentResolver().openInputStream(source); FileOutputStream fo = new FileOutputStream(cacheFile)) {
-                if (inStream == null && source != null) throw new Exception("null");
-                if (inStream != null) { byte[] b = new byte[8192]; int n; while ((n = inStream.read(b)) > 0) fo.write(b, 0, n); }
-            } catch (Exception e) { Toast.makeText(this, "Не удалось открыть файл", Toast.LENGTH_LONG).show(); }
+            try (InputStream inStream = getContentResolver().openInputStream(source); FileOutputStream fo = new FileOutputStream(cacheFile)) {
+                if (inStream == null) throw new Exception("null");
+                byte[] b = new byte[8192]; int n; while ((n = inStream.read(b)) > 0) fo.write(b, 0, n);
+            } catch (Exception e) {
+                Toast.makeText(this, "Не удалось открыть файл. Доступ мог быть отозван — откройте его заново.", Toast.LENGTH_LONG).show();
+                finish(); return;
+            }
+            if (cacheFile.length() == 0) { Toast.makeText(this, "Файл пуст", Toast.LENGTH_LONG).show(); finish(); return; }
             if (cacheFile != null && cacheFile.exists()) {
                 String sniffed = FileKind.sniff(cacheFile);
                 if (!FileKind.UNKNOWN.equals(sniffed)) {
@@ -89,6 +97,20 @@ public class ViewerActivity extends AppCompatActivity {
         WebSettings s = w.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setAllowFileAccess(true);
         s.setSupportZoom(false); s.setBuiltInZoomControls(false); s.setDisplayZoomControls(false);
         w.setNestedScrollingEnabled(false); w.addJavascriptInterface(new Bridge(), "Android");
+        w.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, final android.webkit.JsPromptResult result) {
+                if (isFinishing() || isDestroyed()) { result.cancel(); return true; }
+                final EditText et = new EditText(ViewerActivity.this);
+                et.setText(defaultValue == null ? "" : defaultValue);
+                new AlertDialog.Builder(ViewerActivity.this)
+                        .setTitle(message == null || message.isEmpty() ? "Ввод" : message)
+                        .setView(et)
+                        .setPositiveButton("OK", (d, w2) -> result.confirm(et.getText().toString()))
+                        .setNegativeButton("Отмена", (d, w2) -> result.cancel())
+                        .show();
+                return true;
+            }
+        });
         w.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
                 main.postDelayed(() -> { if (webZoom == null || nativePdf) return; int h = Math.round(view.getContentHeight() * getResources().getDisplayMetrics().density); webZoom.setChildHeight(Math.max(webZoom.getHeight(), h)); }, 400);
@@ -124,7 +146,7 @@ public class ViewerActivity extends AppCompatActivity {
     private void paintPdf() {
         if (pdfRenderer == null && !openPdfRenderer()) return;
         int targetW = Math.max(200, getResources().getDisplayMetrics().widthPixels);
-        Executors.newSingleThreadExecutor().execute(() -> {
+        worker.execute(() -> {
             try {
                 List<Bitmap> bitmaps = new ArrayList<>();
                 synchronized (pdfLock) {
@@ -176,7 +198,7 @@ public class ViewerActivity extends AppCompatActivity {
         if (ocrBusy) { Toast.makeText(this, "Уже распознаём…", Toast.LENGTH_SHORT).show(); return; }
         if (pdfRenderer == null && !openPdfRenderer()) return;
         ocrBusy = true; Toast.makeText(this, "Распознаём текст…", Toast.LENGTH_SHORT).show();
-        Executors.newSingleThreadExecutor().execute(() -> {
+        worker.execute(() -> {
             StringBuilder sb = new StringBuilder(); List<String> pages = new ArrayList<>();
             try {
                 synchronized (pdfLock) {
@@ -267,7 +289,14 @@ public class ViewerActivity extends AppCompatActivity {
         catch (Exception e) { try (OutputStream out = getContentResolver().openOutputStream(uri)) { if (out == null) return false; out.write(data); return true; } catch (Exception e2) { return false; } }
     }
     private File fileForShare() {
-        if (saveBuf.size() > 0) { File f = new File(getCacheDir(), displayName == null ? "document" : displayName); try (FileOutputStream fo = new FileOutputStream(f)) { fo.write(saveBuf.toByteArray()); return f; } catch (Exception ignored) {} }
+        if (saveBuf.size() > 0) {
+            String base = displayName == null ? "document" : displayName;
+            int s = Math.max(base.lastIndexOf('/'), base.lastIndexOf('\\'));
+            if (s >= 0) base = base.substring(s + 1);
+            if (base.isEmpty()) base = "document";
+            File f = new File(getCacheDir(), base);
+            try (FileOutputStream fo = new FileOutputStream(f)) { fo.write(saveBuf.toByteArray()); return f; } catch (Exception ignored) {}
+        }
         return cacheFile;
     }
     @Override public boolean onCreateOptionsMenu(Menu menu) { getMenuInflater().inflate(R.menu.viewer, menu); return true; }
@@ -287,12 +316,33 @@ public class ViewerActivity extends AppCompatActivity {
         if (id == R.id.action_share) { ShareHelper.share(this, fileForShare(), FileKind.mimeForExt(fileExt.isEmpty() ? viewerKind : fileExt), displayName); return true; }
         if (id == R.id.action_print) { ShareHelper.print(this, fileForShare(), displayName); return true; }
         if (id == R.id.action_night) { ThemePrefs.toggle(this); web.evaluateJavascript("toggleNight()", null); return true; }
-        if (id == R.id.action_bookmark) { web.evaluateJavascript("showBookmarks()", null); return true; }
+        if (id == R.id.action_bookmark) { if (nativePdf) nativeBookmarks(); else web.evaluateJavascript("showBookmarks()", null); return true; }
         return super.onOptionsItemSelected(item);
+    }
+    private void nativeBookmarks() {
+        List<Integer> b = Bookmarks.load(this, displayName);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < b.size(); i++) { if (i > 0) sb.append(", "); sb.append(b.get(i) + 1); }
+        EditText input = new EditText(this); input.setInputType(InputType.TYPE_CLASS_NUMBER); input.setHint("№ страницы для добавления");
+        new AlertDialog.Builder(this).setTitle("Закладки").setMessage(sb.length() > 0 ? "Страницы: " + sb : "Пока нет закладок")
+                .setView(input)
+                .setPositiveButton("Добавить", (d, w) -> {
+                    try {
+                        int p = Integer.parseInt(input.getText().toString().trim());
+                        if (p < 1 || p > pdfCount) { Toast.makeText(this, "Страницы нет: " + p, Toast.LENGTH_SHORT).show(); return; }
+                        if (b.contains(p)) { Toast.makeText(this, "Уже есть", Toast.LENGTH_SHORT).show(); return; }
+                        b.add(p); java.util.Collections.sort(b); Bookmarks.save(this, displayName, b);
+                        Toast.makeText(this, "Добавлена стр. " + p, Toast.LENGTH_SHORT).show();
+                        pdfZoom.jumpToPage(p - 1);
+                    } catch (Exception e) { Toast.makeText(this, "Введите номер страницы", Toast.LENGTH_SHORT).show(); }
+                })
+                .setNeutralButton("Удалить все", (d, w) -> { Bookmarks.save(this, displayName, new ArrayList<>()); Toast.makeText(this, "Закладки удалены", Toast.LENGTH_SHORT).show(); })
+                .setNegativeButton("Закрыть", null)
+                .show();
     }
     @Override public void onBackPressed() { if (readerOn) { setReader(false); return; } super.onBackPressed(); }
     @Override protected void onPause() { super.onPause(); if (tts != null) tts.pause(); }
-    @Override protected void onDestroy() { if (tts != null) tts.shutdown(); synchronized (pdfLock) { closePdfLocked(); } super.onDestroy(); }
+    @Override protected void onDestroy() { worker.shutdownNow(); if (tts != null) tts.shutdown(); synchronized (pdfLock) { closePdfLocked(); } super.onDestroy(); }
     public class Bridge {
         @JavascriptInterface public String kind() { return viewerKind; }
         @JavascriptInterface public String fileExt() { return fileExt; }

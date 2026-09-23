@@ -20,10 +20,23 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnNight).setOnClickListener(v -> { ThemePrefs.toggle(this); recreate(); });
         findViewById(R.id.btnDefault).setOnClickListener(v -> DefaultApps.prompt(this));
         findViewById(R.id.btnCall).setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:+375293371412"))); } catch (Exception e) { Toast.makeText(this, "+375293371412", Toast.LENGTH_LONG).show(); } });
-        tb.setOnLongClickListener(v -> { new AlertDialog.Builder(this).setTitle(R.string.app_name).setMessage(getString(R.string.developer_name)+"\n"+getString(R.string.developer_phone_pretty)+"\n"+getString(R.string.version)).setPositiveButton("OK", null).show(); return true; });
+        tb.setOnLongClickListener(v -> {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.app_name)
+                    .setMessage(getString(R.string.developer_name) + "\n" + getString(R.string.developer_phone_pretty) + "\n" + "Версия " + BuildConfig.VERSION_NAME)
+                    .setNeutralButton("Проверить обновления", (d, w) -> UpdateManager.check(this))
+                    .setPositiveButton("OK", null)
+                    .show();
+            return true;
+        });
         if (getIntent() != null && Intent.ACTION_VIEW.equals(getIntent().getAction()) && getIntent().getData() != null) openUri(getIntent().getData());
     }
-    @Override protected void onResume() { super.onResume(); fillRecent(); }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) openUri(intent.getData());
+    }
+    @Override protected void onResume() { super.onResume(); fillRecent(); UpdateManager.checkIfDue(this); }
     private void openUri(Uri uri) {
         if (uri == null) return;
         try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); } catch (Exception ignored) {}
