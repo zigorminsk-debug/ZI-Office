@@ -21,9 +21,15 @@ def releaseRepo = (findProperty('releaseRepo') ?: 'zigorminsk-debug/ZI-Office-Re
 
 // Ключ подписи лежит в signing/ (пароль и alias — в signing/ПОДПИСЬ.txt).
 def keystoreFile = rootProject.file('signing/myoffice-release.p12')
-if (!keystoreFile.exists()) {
-    throw new GradleException("Не найден ключ подписи: ${keystoreFile}\n" +
-            "Он нужен для сборки release. Файл должен лежать в signing/myoffice-release.p12")
+def hasKeystore = keystoreFile.exists()
+if (!hasKeystore) {
+    // без ключа нельзя только выпускать релиз — компиляция и тесты работают
+    def asked = gradle.startParameter.taskNames.join(' ').toLowerCase()
+    if (asked.contains('release') || asked.contains('bundle')) {
+        throw new GradleException("Не найден ключ подписи: ${keystoreFile}\n" +
+                "Он нужен для сборки release — файл должен лежать в signing/myoffice-release.p12")
+    }
+    logger.warn("Ключ подписи signing/myoffice-release.p12 не найден: release-сборка будет недоступна")
 }
 
 android {
@@ -40,10 +46,12 @@ android {
     }
     signingConfigs {
         release {
-            storeFile keystoreFile
-            storePassword "MyOffice-ZI-3371412"
-            keyAlias "myoffice"
-            keyPassword "MyOffice-ZI-3371412"
+            if (hasKeystore) {
+                storeFile keystoreFile
+                storePassword "MyOffice-ZI-3371412"
+                keyAlias "myoffice"
+                keyPassword "MyOffice-ZI-3371412"
+            }
         }
     }
     buildTypes {
