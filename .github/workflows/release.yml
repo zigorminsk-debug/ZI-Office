@@ -100,6 +100,20 @@ jobs:
           set -o pipefail
           ./gradlew assembleRelease -PversionName="$VERSION" --no-daemon --stacktrace 2>&1 | tee build.log
 
+      # Ошибки компиляции видны в аннотациях и в описании запуска:
+      # скачивать лог не нужно.
+      - name: Диагностика ошибок
+        if: failure()
+        run: |
+          set +e
+          echo "### Ошибки сборки" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -nE "error:|e: |Execution failed|FAILURE:|Caused by" build.log 2>/dev/null | head -60 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "error:|\.java:[0-9]+:|\.xml:[0-9]+:|e: " build.log 2>/dev/null | head -8 | while IFS= read -r line; do
+            echo "::error title=Ошибка сборки::${line}"
+          done
+
       - name: Переименовать APK
         env:
           VERSION: ${{ steps.ver.outputs.version }}
