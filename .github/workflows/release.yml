@@ -108,7 +108,12 @@ jobs:
           } > "$RUNNER_TEMP/NOTES.md"
           echo "body_file=$RUNNER_TEMP/NOTES.md" >> "$GITHUB_OUTPUT"
 
+      - name: Check release token
+        if: ${{ secrets.RELEASE_TOKEN == '' }}
+        run: echo "::warning::Секрет RELEASE_TOKEN не задан (Settings -> Secrets and variables -> Actions) — APK собран, но релиз не опубликован. Инструкция: АВТООБНОВЛЕНИЕ.md"
+
       - name: Publish GitHub Release
+        if: ${{ secrets.RELEASE_TOKEN != '' }}
         uses: softprops/action-gh-release@v2
         with:
           repository: ${{ env.RELEASE_REPO }}
