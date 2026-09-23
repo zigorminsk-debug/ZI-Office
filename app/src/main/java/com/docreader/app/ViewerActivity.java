@@ -12,7 +12,8 @@ import androidx.appcompat.app.AlertDialog; import androidx.appcompat.app.AppComp
 import com.google.android.material.appbar.MaterialToolbar; import com.google.android.material.button.MaterialButton;
 import java.io.ByteArrayOutputStream; import java.io.File; import java.io.FileInputStream; import java.io.FileOutputStream;
 import java.io.InputStream; import java.io.OutputStream; import java.nio.charset.StandardCharsets;
-import java.util.ArrayList; import java.util.List; public class ViewerActivity extends AppCompatActivity {
+import java.util.ArrayList; import java.util.List;
+public class ViewerActivity extends AppCompatActivity {
     private WebView web, toolWeb; private PdfZoomView pdfZoom; private ZoomSurface webZoom;
     private View readerBar; private MaterialButton btnPlay; private MaterialToolbar toolbar;
     private File cacheFile; private Uri source; private String displayName = "document", fileExt = "", viewerKind = "pdf";

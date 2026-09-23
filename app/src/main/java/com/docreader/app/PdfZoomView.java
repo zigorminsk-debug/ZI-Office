@@ -190,14 +190,24 @@ public class PdfZoomView extends View {
     @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
         if (ow == 0 && !tops.isEmpty()) fitWidth();
-        else { clamp(); requestVisible(); invalidate(); }
+        else clamp();
+        requestVisible(); // после первой раскладки просим страницы у источника
+        invalidate();
     }
 
     @Override protected void onDraw(Canvas canvas) {
         canvas.drawColor(0xFFF4F1EA);
         if (tops.isEmpty()) return;
+        // рисуем только то, что попадает в экран: у документа может быть
+        // много сотен страниц, лишние drawRect зря тормозят прокрутку
+        int first = 0, last = tops.size() - 1;
+        viewRect.set(0, 0, getWidth(), getHeight());
+        if (matrix.invert(inverse)) {
+            inverse.mapRect(viewRect);
+            first = pageAt(viewRect.top); last = pageAt(viewRect.bottom);
+        }
         canvas.save(); canvas.concat(matrix);
-        for (int i = 0; i < tops.size(); i++) {
+        for (int i = first; i <= last; i++) {
             int top = tops.get(i), bottom = top + heights.get(i);
             Bitmap b = pages.get(i);
             if (b != null && !b.isRecycled()) {
