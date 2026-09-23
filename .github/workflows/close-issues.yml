@@ -1,0 +1,23 @@
+name: close-issues
+
+# Одноразовый: закрывает отладочные issues «Сборка упала…» (боту напрямую
+# права не выданы, а Actions-токен их имеет). Удалить после использования.
+on:
+  push:
+    tags:
+      - 'vtest-close*'
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close debug issues
+        run: |
+          for n in 1 2 3 5 6 7 8; do
+            echo "== issue $n"
+            gh issue close "$n" \
+              --comment "Отработал: ошибка была найдена и исправлена в ходе настройки CI (см. коммиты ветки). Закрываю автоматически." \
+              || echo "не закрыт (возможно, уже закрыт)"
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
