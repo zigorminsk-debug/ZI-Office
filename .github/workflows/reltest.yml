@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'vtest-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Номер версии (совпадает с versionName, напр. 2.24)'
+        required: true
+        default: ''
 
 jobs:
   j:
