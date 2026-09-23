@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/paper">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/teal_700"
+        android:title="О программе"
+        android:titleTextColor="#FFFFFF"
+        android:navigationIcon="?attr/homeAsUpIndicator"/>
+
+    <com.docreader.app.ElasticScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp">
+
+            <!-- Шапка: иконка, название, версия -->
+            <LinearLayout
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="12dp">
+
+                <ImageView
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@mipmap/ic_launcher"
+                    android:contentDescription="@string/app_name"/>
+
+                <LinearLayout
+                    android:orientation="vertical"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="0dp">
+
+                    <TextView
+                        android:text="@string/app_name"
+                        android:textColor="@color/ink"
+                        android:textSize="21sp"
+                        android:textStyle="bold"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"/>
+
+                    <TextView
+                        android:id="@+id/versionText"
+                        android:textColor="@color/muted"
+                        android:textSize="14sp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView
+                android:text="Чтение и работа с документами: PDF, Word, Excel, PowerPoint, RTF, текст. Инструменты PDF, OCR, сканер, облака."
+                android:textColor="@color/muted"
+                android:textSize="14sp"
+                android:paddingBottom="14dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <!-- Обновление -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnUpdate"
+                android:text="Проверить обновления"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <ProgressBar
+                android:id="@+id/updateProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:indeterminate="true"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                android:id="@+id/updateStatus"
+                android:textColor="@color/muted"
+                android:textSize="13sp"
+                android:paddingTop="6dp"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <!-- Контакты -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCall"
+                android:text="@string/developer_name_with_phone"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"/>
+
+            <!-- Частые вопросы -->
+            <TextView
+                android:text="Частые вопросы"
+                android:textColor="@color/ink"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:paddingTop="18dp"
+                android:paddingBottom="6dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView android:id="@+id/q1" style="@style/ZIOffice.Faq.Question" android:text="Как обновить приложение?"/>
+            <TextView android:id="@+id/a1" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Нажмите «Проверить обновления» выше — если вышла новая версия, приложение скачает её и предложит установить. Ещё оно проверяет обновления само при запуске (раз в 6 часов)."/>
+
+            <TextView android:id="@+id/q2" style="@style/ZIOffice.Faq.Question" android:text="Не открывается документ или таблица"/>
+            <TextView android:id="@+id/a2" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Файлы с паролем открыть нельзя — сохраните копию без пароля (Excel: Файл → Сохранить как). Документы из Numbers, WPS и подобных программ сохраните как .xlsx или .docx. Повреждённый файл тоже не откроется."/>
+
+            <TextView android:id="@+id/q3" style="@style/ZIOffice.Faq.Question" android:text="Почему после «Сохранить» получился файл .html?"/>
+            <TextView android:id="@+id/a3" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Word и Excel показываются упрощённо, поэтому результат сохранения — HTML-копия; исходный файл при этом не портится. Правьте тексты и таблицы в Word/Excel, а ZI Office — для просмотра и работы с PDF."/>
+
+            <TextView android:id="@+id/q4" style="@style/ZIOffice.Faq.Question" android:text="Не работает озвучка («Вслух»)"/>
+            <TextView android:id="@+id/a4" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Нужен установленный русский голос: Настройки Android → Система → Языки и ввод → Синтез речи → установить русский голос. После установки откройте документ заново."/>
+
+            <TextView android:id="@+id/q5" style="@style/ZIOffice.Faq.Question" android:text="Распознавание текста (OCR) идёт долго"/>
+            <TextView android:id="@+id/a5" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="При первом запуске загружается модель русского языка, дальше каждая страница распознаётся отдельно — это может занять до минуты на страницу. Результат хранится, пока документ открыт: повторное «Распознать текст» проходит быстрее."/>
+
+            <TextView android:id="@+id/q6" style="@style/ZIOffice.Faq.Question" android:text="Как открыть файлы Google Drive или Яндекс Диска"/>
+            <TextView android:id="@+id/a6" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Меню «Облако» → «Подключить папку» и выберите папку диска. После этого файлы можно открывать и сохранять в неё напрямую (без интернета они останутся в кэше)."/>
+
+            <TextView android:id="@+id/q7" style="@style/ZIOffice.Faq.Question" android:text="Не видно файла на телефоне"/>
+            <TextView android:id="@+id/a7" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Открывайте файл кнопкой «Открыть» — Android даёт доступ только к выбранному файлу. Для работы с папкой целиком подключите её через «Облако» → «Папка диска»."/>
+
+            <TextView
+                android:id="@+id/footer"
+                android:textColor="@color/muted"
+                android:textSize="12sp"
+                android:paddingTop="18dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+        </LinearLayout>
+    </com.docreader.app.ElasticScrollView>
+</LinearLayout>

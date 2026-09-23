@@ -11,11 +11,12 @@
             <com.google.android.material.button.MaterialButton android:id="@+id/btnCloud" android:text="Облако" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnNight" android:text="Тема" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
             <com.google.android.material.button.MaterialButton android:id="@+id/btnDefault" android:text="По умолчанию" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
+            <com.google.android.material.button.MaterialButton android:id="@+id/btnAbout" android:text="О программе" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_margin="4dp"/>
         </LinearLayout>
     </HorizontalScrollView>
     <TextView android:id="@+id/emptyBox" android:text="Нет недавних файлов. Нажмите «Открыть»." android:padding="24dp" android:textColor="@color/muted" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+    <com.docreader.app.ElasticScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
         <LinearLayout android:id="@+id/recentList" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    </ScrollView>
+    </com.docreader.app.ElasticScrollView>
     <com.google.android.material.button.MaterialButton android:id="@+id/btnCall" android:text="Zakharevich Igor · +375 29 337 14 12" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content"/>
 </LinearLayout>

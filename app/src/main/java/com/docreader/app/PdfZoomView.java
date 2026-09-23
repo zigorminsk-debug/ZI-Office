@@ -1,7 +1,7 @@
 package com.docreader.app;
 import android.content.Context; import android.graphics.Bitmap; import android.graphics.Canvas; import android.graphics.Matrix;
 import android.graphics.Paint; import android.graphics.RectF; import android.util.AttributeSet; import android.view.MotionEvent;
-import android.view.ScaleGestureDetector; import android.view.View; import android.view.ViewConfiguration;
+import android.view.ScaleGestureDetector; import android.view.View;
 import java.util.ArrayList;
 
 /**
@@ -50,26 +50,41 @@ public class PdfZoomView extends View {
     private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF dst = new RectF(); private final RectF viewRect = new RectF();
     private final Matrix inverse = new Matrix();
-    private final ScaleGestureDetector scaleDet; private final int slop;
-    private Listener listener; private float lastX, lastY, downX, downY;
-    private int panId = -1; private boolean scaling, panning;
+    private final ScaleGestureDetector scaleDet;
+    private final ElasticPan pan;
+    private Listener listener;
+    private int panId = -1; private boolean scaling;
 
     public PdfZoomView(Context c) { this(c, null); }
     public PdfZoomView(Context c, AttributeSet a) { this(c, a, 0); }
     public PdfZoomView(Context c, AttributeSet a, int d) {
         super(c, a, d); setClickable(true); setFocusable(true);
-        slop = ViewConfiguration.get(c).getScaledTouchSlop();
         gap = GAP_DP * c.getResources().getDisplayMetrics().density;
         placeholder.setStyle(Paint.Style.FILL); placeholder.setColor(0xFFFFFFFF);
         label.setColor(0xFF78716C); label.setTextSize(16f * c.getResources().getDisplayMetrics().density);
         label.setTextAlign(Paint.Align.CENTER);
         scaleDet = new ScaleGestureDetector(c, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override public boolean onScaleBegin(ScaleGestureDetector s) { scaling = true; panning = false; if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true); return true; }
-            @Override public boolean onScale(ScaleGestureDetector s) { float f = s.getScaleFactor(); if (f > 0f && !Float.isNaN(f)) { matrix.postScale(f, f, s.getFocusX(), s.getFocusY()); clamp(); requestVisible(); invalidate(); notifyScale(); } return true; }
-            @Override public void onScaleEnd(ScaleGestureDetector s) { scaling = false; }
+            @Override public boolean onScaleBegin(ScaleGestureDetector s) { scaling = true; pan.abort(); if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true); return true; }
+            @Override public boolean onScale(ScaleGestureDetector s) { float f = s.getScaleFactor(); if (f > 0f && !Float.isNaN(f)) { pan.abort(); matrix.postScale(f, f, s.getFocusX(), s.getFocusY()); clamp(); requestVisible(); invalidate(); notifyScale(); } return true; }
+            @Override public void onScaleEnd(ScaleGestureDetector s) { scaling = false; pan.settle(); }
         });
         try { scaleDet.setQuickScaleEnabled(false); } catch (Exception ignored) {}
+        pan = new ElasticPan(this, new ElasticPan.Host() {
+            @Override public float translationX() { matrix.getValues(mv); return mv[Matrix.MTRANS_X]; }
+            @Override public float translationY() { matrix.getValues(mv); return mv[Matrix.MTRANS_Y]; }
+            @Override public void translation(float tx, float ty) {
+                matrix.getValues(mv); float sx = mv[Matrix.MSCALE_X], sy = mv[Matrix.MSCALE_Y];
+                matrix.setScale(sx, sy); matrix.postTranslate(tx, ty);
+            }
+            @Override public float contentWidth() { return VIRTUAL_WIDTH; }
+            @Override public float contentHeight() { return contentH; }
+            @Override public float scale() { return getScale(); }
+            @Override public void onMoved() { requestVisible(); invalidate(); }
+        });
     }
+
+    /** Эластичная прокрутка: тянуть за край и отпускать с пружиной. */
+    @Override public void computeScroll() { if (pan.computeScroll()) postInvalidateOnAnimation(); }
 
     public void setListener(Listener l) { listener = l; }
 
@@ -112,6 +127,7 @@ public class PdfZoomView extends View {
     public float getScale() { matrix.getValues(mv); return mv[Matrix.MSCALE_X]; }
 
     public void zoomBy(float factor) {
+        pan.abort();
         matrix.postScale(factor, factor, getWidth() / 2f, getHeight() / 2f);
         clamp(); requestVisible(); invalidate(); notifyScale();
     }
@@ -119,6 +135,7 @@ public class PdfZoomView extends View {
     /** Показать страницу с номером index (0 — первая). */
     public void jumpToPage(int index) {
         if (index < 0 || index >= tops.size()) return;
+        pan.abort();
         matrix.getValues(mv); float s = mv[Matrix.MSCALE_X]; if (s < 0.01f) s = 1f;
         matrix.setScale(s, s); matrix.postTranslate(0, -tops.get(index) * s);
         clamp(); requestVisible(); invalidate();
@@ -230,22 +247,26 @@ public class PdfZoomView extends View {
         if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
         scaleDet.onTouchEvent(e);
         switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: panId = e.getPointerId(0); lastX = downX = e.getX(); lastY = downY = e.getY(); panning = false; scaling = false; return true;
-            case MotionEvent.ACTION_POINTER_DOWN: return true;
+            case MotionEvent.ACTION_DOWN:
+                panId = e.getPointerId(0); scaling = false; pan.begin(e.getX(), e.getY());
+                return true;
+            case MotionEvent.ACTION_POINTER_DOWN:
+                pan.abort(); return true;                       // начался щипок — прокрутку прекращаем
             case MotionEvent.ACTION_MOVE:
                 if (scaling || e.getPointerCount() >= 2) return true;
                 int idx = e.findPointerIndex(panId); if (idx < 0) idx = 0;
-                float x = e.getX(idx), y = e.getY(idx);
-                if (!panning && Math.hypot(x - downX, y - downY) > slop) panning = true;
-                if (panning) { matrix.postTranslate(x - lastX, y - lastY); clamp(); requestVisible(); invalidate(); }
-                lastX = x; lastY = y; return true;
+                pan.move(e.getX(idx), e.getY(idx));
+                return true;
             case MotionEvent.ACTION_POINTER_UP: {
                 int up = e.getPointerId(e.getActionIndex());
-                if (up == panId) { int ni = e.getActionIndex() == 0 ? 1 : 0; if (ni < e.getPointerCount()) { panId = e.getPointerId(ni); lastX = e.getX(ni); lastY = e.getY(ni); } }
+                if (up == panId) {
+                    int ni = e.getActionIndex() == 0 ? 1 : 0;
+                    if (ni < e.getPointerCount()) { panId = e.getPointerId(ni); pan.begin(e.getX(ni), e.getY(ni)); }
+                }
                 return true;
             }
             case MotionEvent.ACTION_UP: case MotionEvent.ACTION_CANCEL:
-                panId = -1; panning = false; scaling = false; requestVisible(); return true;
+                panId = -1; scaling = false; pan.end(); return true;
         }
         return true;
     }

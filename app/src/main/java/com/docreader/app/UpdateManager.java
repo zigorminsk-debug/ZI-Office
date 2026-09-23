@@ -54,17 +54,40 @@ final class UpdateManager {
         check(act, false);
     }
 
+    /** Оповещение о ходе и результате проверки — для экрана «О программе». */
+    interface CheckListener {
+        /** Проверка началась (можно показать индикатор). */
+        void onStart();
+        /**
+         * @param message текст для пользователя
+         * @param version номер доступной версии или null, если обновления нет
+         * @param apkUrl  ссылка на APK обновления или null
+         */
+        void onResult(String message, String version, String apkUrl);
+    }
+
     /** Проверка по кнопке «Проверить обновления» — с показом результата. */
     static void check(final Activity act) {
-        check(act, true);
+        check(act, true, null);
+    }
+
+    /** Проверка с отчётом на экран (кнопка «Обновить» в «О программе»). */
+    static void check(final Activity act, final CheckListener listener) {
+        check(act, true, listener);
     }
 
     /** Проверить наличие новой версии и при необходимости показать диалог. */
     static void check(final Activity act, final boolean manual) {
+        check(act, manual, null);
+    }
+
+    private static void check(final Activity act, final boolean manual, final CheckListener listener) {
         if (!busy.compareAndSet(false, true)) {
             if (manual) Toast.makeText(act, "Проверка уже идёт…", Toast.LENGTH_SHORT).show();
+            if (listener != null) main().post(() -> listener.onResult("Проверка уже идёт…", null, null));
             return;
         }
+        if (listener != null) main().post(listener::onStart);
         new Thread(() -> {
             String tag = null, notes = null, apkUrl = null;
             boolean answered = false;
@@ -107,19 +130,25 @@ final class UpdateManager {
             // отсутствии новых версий GitHub дёргался бы при каждом запуске,
             // хотя обещан интервал раз в 6 часов.
             if (answered) act.getSharedPreferences(PREFS, 0).edit().putLong("last_check", System.currentTimeMillis()).apply();
+            final String local = BuildConfig.VERSION_NAME;
             if (tag == null || apkUrl == null || !isSafeHost(apkUrl)) {
-                if (manual) toast(act, explain(httpCode, failure));
+                String message = explain(httpCode, failure);
+                if (listener != null) main().post(() -> listener.onResult(message, null, null));
+                else if (manual) toast(act, message);
                 return;
             }
-            String remote = tag.startsWith("v") ? tag.substring(1) : tag;
-            String local = BuildConfig.VERSION_NAME;
+            final String remote = tag.startsWith("v") ? tag.substring(1) : tag;
             if (!isNewer(remote, local)) {
-                if (manual) toast(act, "Установлена последняя версия " + local);
+                final String message = "Установлена последняя версия " + local;
+                if (listener != null) main().post(() -> listener.onResult(message, null, null));
+                else if (manual) toast(act, message);
                 return;
             }
             final String ver = remote;
             final String notesFinal = notes;
             final String urlFinal = apkUrl;
+            final String found = "Доступна версия " + remote + " (установлена " + local + ")";
+            if (listener != null) main().post(() -> listener.onResult(found, remote, urlFinal));
             main().post(() -> {
                 if (act.isFinishing() || act.isDestroyed()) return;
                 String msg = "Доступна версия " + ver + " (установлена " + local + ").\n\n"
@@ -152,6 +181,15 @@ final class UpdateManager {
 
     private static void toast(final Activity act, final String msg) {
         main().post(() -> { if (!act.isFinishing() && !act.isDestroyed()) Toast.makeText(act, msg, Toast.LENGTH_LONG).show(); });
+    }
+
+    /** Скачать APK обновления и запустить установщик (для экрана «О программе»). */
+    static void startDownload(final Activity act, final String urlStr, final String ver) {
+        if (urlStr == null || !isSafeHost(urlStr)) {
+            Toast.makeText(act, "Ссылка на обновление недоступна", Toast.LENGTH_LONG).show();
+            return;
+        }
+        download(act, urlStr, ver);
     }
 
     private static void download(final Activity act, final String urlStr, final String ver) {

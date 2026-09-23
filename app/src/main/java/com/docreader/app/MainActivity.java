@@ -2,7 +2,7 @@ package com.docreader.app;
 import android.content.Intent; import android.net.Uri; import android.os.Bundle;
 import android.view.Gravity; import android.view.View; import android.widget.LinearLayout; import android.widget.TextView; import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher; import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AlertDialog; import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
 public class MainActivity extends AppCompatActivity {
     private LinearLayout recentList; private View emptyBox; private ActivityResultLauncher<Intent> openDoc;
@@ -19,25 +19,20 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnCloud).setOnClickListener(v -> startActivity(new Intent(this, CloudActivity.class)));
         findViewById(R.id.btnNight).setOnClickListener(v -> { ThemePrefs.toggle(this); recreate(); });
         findViewById(R.id.btnDefault).setOnClickListener(v -> DefaultApps.prompt(this));
+        findViewById(R.id.btnAbout).setOnClickListener(v -> openAbout());
         findViewById(R.id.btnCall).setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:+375293371412"))); } catch (Exception e) { Toast.makeText(this, "+375293371412", Toast.LENGTH_LONG).show(); } });
-        tb.setOnLongClickListener(v -> { showAbout(); return true; });
+        tb.setOnLongClickListener(v -> { openAbout(); return true; });
         if (getIntent() != null && Intent.ACTION_VIEW.equals(getIntent().getAction()) && getIntent().getData() != null) openUri(getIntent().getData());
     }
     @Override public boolean onCreateOptionsMenu(android.view.Menu menu) { getMenuInflater().inflate(R.menu.main, menu); return true; }
     @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
         int id = item.getItemId();
         if (id == R.id.action_update) { UpdateManager.check(this); return true; }
-        if (id == R.id.action_about) { showAbout(); return true; }
+        if (id == R.id.action_about) { openAbout(); return true; }
         return super.onOptionsItemSelected(item);
     }
-    private void showAbout() {
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.app_name)
-                .setMessage(getString(R.string.developer_name) + "\n" + getString(R.string.developer_phone_pretty) + "\nВерсия " + BuildConfig.VERSION_NAME)
-                .setNeutralButton("Проверить обновления", (d, w) -> UpdateManager.check(this))
-                .setPositiveButton("OK", null)
-                .show();
-    }
+    /** Экран «О программе»: версия, обновление, контакты и частые вопросы. */
+    private void openAbout() { startActivity(new Intent(this, AboutActivity.class)); }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);

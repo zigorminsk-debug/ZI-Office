@@ -42,6 +42,7 @@
         <activity android:name=".CloudBrowserActivity" android:exported="false"/>
         <activity android:name=".ScanActivity" android:exported="false"/>
         <activity android:name=".MergeActivity" android:exported="false"/>
+        <activity android:name=".AboutActivity" android:exported="false"/>
         <provider android:name="androidx.core.content.FileProvider" android:authorities="com.docreader.app.files" android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
         </provider>
