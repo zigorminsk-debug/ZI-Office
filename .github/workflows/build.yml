@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   build:
@@ -50,7 +51,23 @@ jobs:
       - name: Build (compile check)
         run: |
           set -o pipefail
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+          java -version 2>&1 | tee build.log
+          echo "ANDROID_HOME=$ANDROID_HOME" >> build.log
+          ls "$ANDROID_HOME" 2>&1 | tee -a build.log
+          cat gradle.properties | tee -a build.log
+          echo "================ GRADLE ================" >> build.log
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee -a build.log || { echo "GRADLE_EXIT=$?" >> build.log; exit 1; }
+
+      # Хвост лога в job summary — видно в UI на github.com
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Build log (tail)"
+            echo '```'
+            tail -n 150 build.log 2>/dev/null || echo "лог не сохранён"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Если сборка упала, создаёт issue с хвостом лога (удобно читать/чинить)
       - name: Report failure (issue)
@@ -65,6 +82,6 @@ jobs:
             tail -c 40000 build.log 2>/dev/null || echo "лог не сохранён"
             echo '```'
           } > /tmp/failbody.md
-          gh issue create --title "Сборка упала: $(git rev-parse --short HEAD)" --body-file /tmp/failbody.md
+          gh issue create --title "Сборка упала: $(git rev-parse --short HEAD)" --body-file /tmp/failbody.md || echo "issue не создан"
         env:
           GH_TOKEN: ${{ github.token }}
