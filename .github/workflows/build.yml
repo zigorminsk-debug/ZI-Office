@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_HOME: /home/runner/android-sdk
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4

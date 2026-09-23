@@ -39,6 +39,7 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_HOME: /home/runner/android-sdk
+      ANDROID_SDK_ROOT: /home/runner/android-sdk
       RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
     steps:
       - name: Checkout
