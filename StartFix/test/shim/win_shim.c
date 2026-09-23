@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <ctype.h>
 
 /* --- куча ----------------------------------------------------------------- */
 HANDLE GetProcessHeap(void) { return (HANDLE)1; }
@@ -98,9 +99,34 @@ UINT GetOEMCP(void) { return 866; }
 UINT GetACP(void)  { return 1251; }
 
 /* --- файлы ---------------------------------------------------------------- */
+/* Преобразование пути Windows -> POSIX: обратные слэши становятся прямыми,
+   как это и происходит на реальной Windows (там '\\' — разделитель каталогов). */
 static void path_to_u8(const wchar_t* w, char* out, size_t cap)
 {
+    size_t i;
     wcstombs(out, w, cap);
+    for (i = 0; out[i]; i++) if (out[i] == '\\') out[i] = '/';
+}
+
+/* Учёт открытых файлов: CloseHandle не должен закрывать «служебные» псевдо-хэндлы. */
+static FILE* g_files[128];
+static int   g_files_n;
+
+static void file_register(FILE* f)
+{
+    if (g_files_n < 128) g_files[g_files_n++] = f;
+}
+
+static int file_unregister(FILE* f)
+{
+    int i;
+    for (i = 0; i < g_files_n; i++) {
+        if (g_files[i] == f) {
+            g_files[i] = g_files[--g_files_n];
+            return 1;
+        }
+    }
+    return 0;
 }
 
 HANDLE CreateFileW(const wchar_t* path, DWORD access, DWORD share, void* sa, DWORD disposition,
@@ -120,6 +146,7 @@ HANDLE CreateFileW(const wchar_t* path, DWORD access, DWORD share, void* sa, DWO
     }
     FILE* f = fopen(p, mode);
     if (!f) return INVALID_HANDLE_VALUE;
+    file_register(f);
     return (HANDLE)f;
 }
 
@@ -164,7 +191,8 @@ BOOL GetFileSizeEx(HANDLE h, LARGE_INTEGER* size)
 
 BOOL CloseHandle(HANDLE h)
 {
-    if (h && h != INVALID_HANDLE_VALUE) fclose((FILE*)h);
+    if (h && h != INVALID_HANDLE_VALUE && file_unregister((FILE*)h))
+        fclose((FILE*)h);
     return 1;
 }
 
@@ -326,12 +354,133 @@ HANDLE ShellExecuteW(HANDLE w, const wchar_t* op, const wchar_t* f, const wchar_
     return (HANDLE)1;
 }
 
+void InitializeCriticalSection(CRITICAL_SECTION* cs) { (void)cs; }
+void EnterCriticalSection(CRITICAL_SECTION* cs) { (void)cs; }
+void LeaveCriticalSection(CRITICAL_SECTION* cs) { (void)cs; }
+void DeleteCriticalSection(CRITICAL_SECTION* cs) { (void)cs; }
+
+LONG InterlockedExchange(volatile LONG* target, LONG value)
+{
+    return __sync_lock_test_and_set((long*)target, (long)value);
+}
+
+LONG InterlockedCompareExchange(volatile LONG* target, LONG exchange, LONG comparand)
+{
+    return __sync_val_compare_and_swap((long*)target, (long)comparand, (long)exchange);
+}
+
+HANDLE CreateThread(void* sa, size_t stack, DWORD (WINAPI *fn)(void*), void* param, DWORD flags, DWORD* id)
+{
+    (void)sa; (void)stack; (void)fn; (void)param; (void)flags;
+    if (id) *id = 1;
+    return (HANDLE)1;
+}
+
+typedef struct {
+    DIR*   dir;
+    char   dirpath[1024];
+    char   pattern[512];
+    int    first;
+} find_ctx;
+
+/* сопоставление с шаблоном (* и ?), без учёта регистра */
+static int wildcard_match(const char* pat, const char* name)
+{
+    while (*pat) {
+        if (*pat == '*') {
+            pat++;
+            if (!*pat) return 1;
+            while (*name) {
+                if (wildcard_match(pat, name)) return 1;
+                name++;
+            }
+            return wildcard_match(pat, name);
+        }
+        if (*pat == '?') {
+            if (!*name) return 0;
+            pat++; name++;
+            continue;
+        }
+        if (tolower((unsigned char)*pat) != tolower((unsigned char)*name)) return 0;
+        pat++; name++;
+    }
+    return *name == 0;
+}
+
+static HANDLE find_open_dir(const wchar_t* mask, WIN32_FIND_DATAW* data)
+{
+    char m[2048], *slash;
+    find_ctx* ctx = (find_ctx*)calloc(1, sizeof(find_ctx));
+    if (!ctx) return INVALID_HANDLE_VALUE;
+    path_to_u8(mask, m, sizeof(m));
+    slash = strrchr(m, '/');
+    if (!slash) slash = strrchr(m, '\\');
+    if (slash) {
+        strncpy(ctx->pattern, slash + 1, sizeof(ctx->pattern) - 1);
+        *slash = 0;
+        strncpy(ctx->dirpath, m, sizeof(ctx->dirpath) - 1);
+    } else {
+        strncpy(ctx->pattern, m, sizeof(ctx->pattern) - 1);
+        strcpy(ctx->dirpath, ".");
+    }
+    if (ctx->pattern[0] == 0) strcpy(ctx->pattern, "*");
+    ctx->dir = opendir(ctx->dirpath);
+    if (!ctx->dir) { free(ctx); return INVALID_HANDLE_VALUE; }
+    ctx->first = 1;
+    if (data) memset(data, 0, sizeof(*data));
+    return (HANDLE)ctx;
+}
+
+static BOOL find_next(find_ctx* ctx, WIN32_FIND_DATAW* data)
+{
+    struct stat st;
+    if (!ctx || !ctx->dir) return 0;
+    for (;;) {
+        struct dirent* de = readdir(ctx->dir);
+        char full[2048];
+        size_t i;
+        if (!de) return 0;
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        if (!wildcard_match(ctx->pattern, de->d_name)) continue;
+        snprintf(full, sizeof(full), "%s/%s", ctx->dirpath, de->d_name);
+        if (stat(full, &st) != 0) continue;
+        if (data) {
+            memset(data, 0, sizeof(*data));
+            data->dwFileAttributes = S_ISDIR(st.st_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+            for (i = 0; de->d_name[i] && i < 259; i++) data->cFileName[i] = (WCHAR)(unsigned char)de->d_name[i];
+            data->cFileName[i] = 0;
+        }
+        return 1;
+    }
+}
+
+/* Как в Windows: FindFirstFileW сразу возвращает первый найденный элемент. */
 HANDLE FindFirstFileW(const wchar_t* mask, WIN32_FIND_DATAW* data)
 {
-    (void)mask; (void)data;
-    return INVALID_HANDLE_VALUE;
+    HANDLE h = find_open_dir(mask, data);
+    if (h == INVALID_HANDLE_VALUE) return h;
+    if (!find_next((find_ctx*)h, data)) {
+        find_ctx* ctx = (find_ctx*)h;
+        if (ctx->dir) closedir(ctx->dir);
+        free(ctx);
+        return INVALID_HANDLE_VALUE;
+    }
+    return h;
 }
-BOOL FindNextFileW(HANDLE h, WIN32_FIND_DATAW* data) { (void)h; (void)data; return 0; }
-BOOL FindClose(HANDLE h) { (void)h; return 1; }
+
+BOOL FindNextFileW(HANDLE h, WIN32_FIND_DATAW* data)
+{
+    return find_next((find_ctx*)h, data) ? 1 : 0;
+}
+
+BOOL FindClose(HANDLE h)
+{
+    find_ctx* ctx = (find_ctx*)h;
+    if (ctx) {
+        if (ctx->dir) closedir(ctx->dir);
+        free(ctx);
+    }
+    return 1;
+}
 
 void* memcpy(void* d, const void* s, size_t n);

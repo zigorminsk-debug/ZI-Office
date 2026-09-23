@@ -590,7 +590,9 @@ static void refresh_findings(void)
     rt_file_close(&f);
     buf[got] = 0;
 
+    /* счётчики пересчитываются заново по всему файлу заключений */
     rt_sb_reset(&g_app.findings);
+    g_app.n_crit = g_app.n_warn = g_app.n_info = g_app.n_fixed = 0;
 
     {
         char* line = buf;
@@ -665,6 +667,7 @@ static void findings_table(rt_sb* out, const wchar_t* title)
             memcpy(line, p, len * sizeof(wchar_t));
             line[len] = 0;
             rt_wtrim(line);
+            /* формат строки: УРОВЕНЬ<TAB>КОД<TAB>текст */
             tab = rt_wfind_ch(line, L'\t');
             if (rt_wstarts_ci(line, L"CRIT")) { cls = L"crit"; lvl = L"КРИТИЧНО"; }
             else if (rt_wstarts_ci(line, L"WARN")) { cls = L"warn"; lvl = L"ВНИМАНИЕ"; }
@@ -676,20 +679,21 @@ static void findings_table(rt_sb* out, const wchar_t* title)
             rt_sb_puts(out, lvl);
             rt_sb_puts(out, L"</td><td>");
             if (tab) {
-                const wchar_t* text = tab + 1;
-                const wchar_t* tab2 = rt_wfind_ch(text, L'\t');
-                wchar_t tmp[2048];
-                if (tab2) {
-                    size_t l2 = (size_t)(tab2 - text);
-                    if (l2 > 2047) l2 = 2047;
-                    memcpy(tmp, text, l2 * sizeof(wchar_t));
-                    tmp[l2] = 0;
-                    html_escape(out, tmp);
+                const wchar_t* code = tab + 1;
+                const wchar_t* codeEnd = rt_wfind_ch(code, L'\t');
+                if (codeEnd) {
+                    wchar_t codeBuf[160];
+                    size_t codeLen = (size_t)(codeEnd - code);
+                    const wchar_t* text = codeEnd + 1;
+                    if (codeLen > 159) codeLen = 159;
+                    memcpy(codeBuf, code, codeLen * sizeof(wchar_t));
+                    codeBuf[codeLen] = 0;
+                    html_escape(out, text);
                     rt_sb_puts(out, L" <span class=\"src\">[");
-                    html_escape(out, tab + 1);
+                    html_escape(out, codeBuf);
                     rt_sb_puts(out, L"]</span>");
                 } else {
-                    html_escape(out, text);
+                    html_escape(out, code);
                 }
             } else {
                 html_escape(out, line);
@@ -989,3 +993,26 @@ int zi_start_plan(int plan_index)
     CloseHandle(h);
     return 1;
 }
+
+/* --------------------------------------------------------------------------
+ * Тестовые «крючки»: точка доступа к внутренним функциям.
+ * В рабочей сборке этот блок не компилируется (макрос ZI_TESTING не задан).
+ * ------------------------------------------------------------------------*/
+#ifdef ZI_TESTING
+void zi_test_build_cmd(rt_sb* sb, const wchar_t* mode, const wchar_t* step_log,
+                       int use_backup, int restore_point, int reset_layout, int no_explorer)
+{
+    build_ps_command(sb, mode, step_log, use_backup, restore_point, reset_layout, no_explorer);
+}
+
+void zi_test_build_cmd_iex(rt_sb* sb, const wchar_t* mode, const wchar_t* step_log,
+                           int use_backup, int restore_point, int reset_layout, int no_explorer)
+{
+    build_ps_command_iex(sb, mode, step_log, use_backup, restore_point, reset_layout, no_explorer);
+}
+
+void zi_test_refresh_findings(void)
+{
+    refresh_findings();
+}
+#endif /* ZI_TESTING */

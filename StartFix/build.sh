@@ -122,8 +122,11 @@ build x86_64-windows-gnu "$OBJ/app-x86_64.res" console "StartFix-cli-x64.exe"
 build x86-windows-gnu    "$OBJ/app-x86.res"    windows "StartFix-x86.exe"
 build x86-windows-gnu    "$OBJ/app-x86.res"    console "StartFix-cli-x86.exe"
 
-# --- 4.5 Служебные файлы отладки ---
+# --- 4.5 Служебные файлы отладки и контрольные суммы ---
 rm -f "$DIST"/*.pdb
+( cd "$DIST" && sha256sum StartFix-x64.exe StartFix-cli-x64.exe StartFix-x86.exe StartFix-cli-x86.exe > SHA256SUMS.txt )
+echo "--- контрольные суммы ---"
+cat "$DIST/SHA256SUMS.txt"
 
 # --- 5. Архив для распространения -------------------------------------------
 echo "--- упаковка архива ---"
@@ -140,6 +143,9 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
     readme = os.path.join(root, "README.md")
     if os.path.exists(readme):
         z.write(readme, arcname="StartFix/ПРОЧТИ-МЕНЯ.md")
+    sums = os.path.join(dist, "SHA256SUMS.txt")
+    if os.path.exists(sums):
+        z.write(sums, arcname="StartFix/SHA256SUMS.txt")
 print("создано:", zip_path)
 PYEOF
 

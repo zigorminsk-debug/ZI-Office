@@ -13,6 +13,13 @@
 extern "C" {
 #endif
 
+/* строковые операции объявляем сами: на Windows их приносит string.h */
+void* memcpy(void* dst, const void* src, size_t n);
+void* memmove(void* dst, const void* src, size_t n);
+void* memset(void* dst, int c, size_t n);
+int   memcmp(const void* a, const void* b, size_t n);
+void* memchr(const void* p, int c, size_t n);
+
 #define WINAPI
 #define CALLBACK
 #define CONST const
@@ -29,6 +36,17 @@ typedef int                BOOL;
 typedef long long          LONGLONG;
 typedef unsigned long long ULONGLONG;
 typedef void*              HANDLE;
+typedef void*              HINSTANCE;
+typedef void*              HWND;
+typedef void*              HMENU;
+typedef void*              HBRUSH;
+typedef void*              HICON;
+typedef void*              HDC;
+typedef intptr_t           INT_PTR;
+typedef uintptr_t          UINT_PTR;
+typedef intptr_t           LONG_PTR;
+typedef UINT_PTR           WPARAM;
+typedef LONG_PTR           LPARAM;
 typedef void*              HMODULE;
 typedef void*              HKEY;
 typedef void*              LPVOID;
@@ -127,6 +145,15 @@ BOOL   DeleteFileW(const wchar_t* path);
 DWORD  GetFileAttributesW(const wchar_t* path);
 BOOL   GetFileAttributesExW(const wchar_t* path, int level, void* data);
 BOOL   CreateDirectoryW(const wchar_t* path, void* sa);
+typedef struct { int placeholder; } CRITICAL_SECTION;
+void InitializeCriticalSection(CRITICAL_SECTION* cs);
+void EnterCriticalSection(CRITICAL_SECTION* cs);
+void LeaveCriticalSection(CRITICAL_SECTION* cs);
+void DeleteCriticalSection(CRITICAL_SECTION* cs);
+LONG InterlockedExchange(volatile LONG* target, LONG value);
+LONG InterlockedCompareExchange(volatile LONG* target, LONG exchange, LONG comparand);
+HANDLE CreateThread(void* sa, size_t stack, DWORD (WINAPI *fn)(void*), void* param, DWORD flags, DWORD* id);
+
 HANDLE FindFirstFileW(const wchar_t* mask, WIN32_FIND_DATAW* data);
 BOOL   FindNextFileW(HANDLE h, WIN32_FIND_DATAW* data);
 BOOL   FindClose(HANDLE h);
@@ -161,6 +188,9 @@ void   Sleep(DWORD ms);
 BOOL   GetVersionExW(OSVERSIONINFOW* v);
 HANDLE ShellExecuteW(HANDLE wnd, const wchar_t* op, const wchar_t* file, const wchar_t* params,
                      const wchar_t* dir, int show);
+
+#define LOWORD(v) ((WORD)((UINT_PTR)(v) & 0xFFFF))
+#define HIWORD(v) ((WORD)(((UINT_PTR)(v) >> 16) & 0xFFFF))
 
 #ifdef __cplusplus
 }
