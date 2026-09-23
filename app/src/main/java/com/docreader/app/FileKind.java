@@ -45,8 +45,9 @@ final class FileKind {
             if (m.contains("word") || m.contains("msword") || m.contains("wordprocessing")) return m.contains("openxml") || m.contains("docx") ? "docx" : "doc";
             if (m.contains("csv") || m.contains("comma-separated")) return "csv";
             if (m.contains("spreadsheetml") || m.contains("xlsx") || m.contains("xlsm") || m.contains("xltx")) return "xlsx";
-            if (m.contains("excel") || m.contains("spreadsheet") || m.contains("vnd.ms-excel") || m.contains("numbers")) return m.contains("openxml") ? "xlsx" : "xls";
             if (m.contains("opendocument.spreadsheet") || m.contains("vnd.oasis.opendocument.spreadsheet")) return "ods";
+            if (m.contains("excel") || m.contains("spreadsheet") || m.contains("vnd.ms-excel") || m.contains("numbers")) return m.contains("openxml") ? "xlsx" : "xls";
+            if (m.contains("opendocument.presentation")) return UNKNOWN;
             if (m.contains("powerpoint") || m.contains("presentation")) return m.contains("openxml") ? "pptx" : "ppt";
             if (m.contains("text/plain") || m.contains("text/txt")) return "txt";
             if (m.contains("application/zip") || m.contains("octet-stream") || m.contains("application/x-zip")) return UNKNOWN;

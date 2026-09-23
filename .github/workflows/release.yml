@@ -83,6 +83,12 @@ jobs:
             VN=${{ github.event.inputs.version }}
             VN=${VN#v}
           fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ -n "$TAG" ] && [ "$TAG" != "$VN" ]; then
+              echo "::warning::Тег ${TAG} не совпадает с versionName ${VN} — релиз будет создан как v${VN}"
+            fi
+          fi
           echo "vn=${VN}" >> "$GITHUB_OUTPUT"
           echo "Версия: ${VN}"
 

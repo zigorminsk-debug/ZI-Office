@@ -57,7 +57,7 @@ jobs:
           ls "$ANDROID_HOME" 2>&1 | tee -a build.log
           cat gradle.properties | tee -a build.log
           echo "================ GRADLE ================" >> build.log
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee -a build.log || { echo "GRADLE_EXIT=$?" >> build.log; exit 1; }
+          ./gradlew assembleRelease testReleaseUnitTest --no-daemon --stacktrace 2>&1 | tee -a build.log || { echo "GRADLE_EXIT=$?" >> build.log; exit 1; }
 
       # Хвост лога в job summary — видно в UI на github.com
       - name: Job summary
