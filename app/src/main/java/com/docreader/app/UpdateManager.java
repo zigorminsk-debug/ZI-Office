@@ -36,8 +36,15 @@ final class UpdateManager {
     private static final String LATEST_URL = "https://api.github.com/repos/" + RELEASE_REPO + "/releases/latest";
     private static final String PREFS = "update";
     private static final long CHECK_INTERVAL_MS = 6L * 3600 * 1000L; // раз в 6 часов
-    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static volatile Handler mainHandler;
     private static final AtomicBoolean busy = new AtomicBoolean(false);
+
+    /** Лениво: класс можно инициализировать и без Android-окружения (юнит-тесты). */
+    private static Handler main() {
+        Handler h = mainHandler;
+        if (h == null) { h = new Handler(Looper.getMainLooper()); mainHandler = h; }
+        return h;
+    }
 
     /** Автопроверка при запуске/возврате в главное окно (не чаще раза в 6 ч). */
     static void checkIfDue(final Activity act) {
@@ -89,7 +96,7 @@ final class UpdateManager {
             final String ver = remote;
             final String notesFinal = notes;
             final String urlFinal = apkUrl;
-            main.post(() -> {
+            main().post(() -> {
                 if (act.isFinishing() || act.isDestroyed()) return;
                 String msg = "Доступна версия " + ver + " (установлена " + local + ").\n\n"
                         + "Нажмите «Скачать» — файл загрузится, после чего система сама "
@@ -135,7 +142,7 @@ final class UpdateManager {
                 c.setRequestProperty("User-Agent", "ZI-Office-Update");
                 int code = c.getResponseCode();
                 if (code != 200) {
-                    main.post(() -> finishDialog(act, dlg, apk, "Не удалось скачать: HTTP " + code));
+                    main().post(() -> finishDialog(act, dlg, apk, "Не удалось скачать: HTTP " + code));
                     return;
                 }
                 long total = c.getContentLengthLong();
@@ -145,13 +152,13 @@ final class UpdateManager {
                         fo.write(b, 0, n); done += n;
                         if (total > 0) {
                             final int p = (int) (done * 100 / total);
-                            main.post(() -> { if (dlg.isShowing()) dlg.setMessage("Загрузка… " + p + "%"); });
+                            main().post(() -> { if (dlg.isShowing()) dlg.setMessage("Загрузка… " + p + "%"); });
                         }
                     }
                 }
-                main.post(() -> startInstall(act, dlg, apk, ver));
+                main().post(() -> startInstall(act, dlg, apk, ver));
             } catch (Exception e) {
-                main.post(() -> finishDialog(act, dlg, apk, "Не удалось скачать. Проверьте интернет."));
+                main().post(() -> finishDialog(act, dlg, apk, "Не удалось скачать. Проверьте интернет."));
             } finally {
                 if (c != null) c.disconnect();
             }
