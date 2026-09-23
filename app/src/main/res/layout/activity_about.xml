@@ -116,26 +116,26 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"/>
 
-            <TextView android:id="@+id/q1" style="@style/ZIOffice.Faq.Question" android:text="Как обновить приложение?"/>
-            <TextView android:id="@+id/a1" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Нажмите «Проверить обновления» выше — если вышла новая версия, приложение скачает её и предложит установить. Ещё оно проверяет обновления само при запуске (раз в 6 часов)."/>
+            <TextView android:id="@+id/q1" style="@style/FaqQuestion" android:text="Как обновить приложение?"/>
+            <TextView android:id="@+id/a1" style="@style/FaqAnswer" android:visibility="gone" android:text="Нажмите «Проверить обновления» выше — если вышла новая версия, приложение скачает её и предложит установить. Ещё оно проверяет обновления само при запуске (раз в 6 часов)."/>
 
-            <TextView android:id="@+id/q2" style="@style/ZIOffice.Faq.Question" android:text="Не открывается документ или таблица"/>
-            <TextView android:id="@+id/a2" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Файлы с паролем открыть нельзя — сохраните копию без пароля (Excel: Файл → Сохранить как). Документы из Numbers, WPS и подобных программ сохраните как .xlsx или .docx. Повреждённый файл тоже не откроется."/>
+            <TextView android:id="@+id/q2" style="@style/FaqQuestion" android:text="Не открывается документ или таблица"/>
+            <TextView android:id="@+id/a2" style="@style/FaqAnswer" android:visibility="gone" android:text="Файлы с паролем открыть нельзя — сохраните копию без пароля (Excel: Файл → Сохранить как). Документы из Numbers, WPS и подобных программ сохраните как .xlsx или .docx. Повреждённый файл тоже не откроется."/>
 
-            <TextView android:id="@+id/q3" style="@style/ZIOffice.Faq.Question" android:text="Почему после «Сохранить» получился файл .html?"/>
-            <TextView android:id="@+id/a3" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Word и Excel показываются упрощённо, поэтому результат сохранения — HTML-копия; исходный файл при этом не портится. Правьте тексты и таблицы в Word/Excel, а ZI Office — для просмотра и работы с PDF."/>
+            <TextView android:id="@+id/q3" style="@style/FaqQuestion" android:text="Почему после «Сохранить» получился файл .html?"/>
+            <TextView android:id="@+id/a3" style="@style/FaqAnswer" android:visibility="gone" android:text="Word и Excel показываются упрощённо, поэтому результат сохранения — HTML-копия; исходный файл при этом не портится. Правьте тексты и таблицы в Word/Excel, а ZI Office — для просмотра и работы с PDF."/>
 
-            <TextView android:id="@+id/q4" style="@style/ZIOffice.Faq.Question" android:text="Не работает озвучка («Вслух»)"/>
-            <TextView android:id="@+id/a4" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Нужен установленный русский голос: Настройки Android → Система → Языки и ввод → Синтез речи → установить русский голос. После установки откройте документ заново."/>
+            <TextView android:id="@+id/q4" style="@style/FaqQuestion" android:text="Не работает озвучка («Вслух»)"/>
+            <TextView android:id="@+id/a4" style="@style/FaqAnswer" android:visibility="gone" android:text="Нужен установленный русский голос: Настройки Android → Система → Языки и ввод → Синтез речи → установить русский голос. После установки откройте документ заново."/>
 
-            <TextView android:id="@+id/q5" style="@style/ZIOffice.Faq.Question" android:text="Распознавание текста (OCR) идёт долго"/>
-            <TextView android:id="@+id/a5" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="При первом запуске загружается модель русского языка, дальше каждая страница распознаётся отдельно — это может занять до минуты на страницу. Результат хранится, пока документ открыт: повторное «Распознать текст» проходит быстрее."/>
+            <TextView android:id="@+id/q5" style="@style/FaqQuestion" android:text="Распознавание текста (OCR) идёт долго"/>
+            <TextView android:id="@+id/a5" style="@style/FaqAnswer" android:visibility="gone" android:text="При первом запуске загружается модель русского языка, дальше каждая страница распознаётся отдельно — это может занять до минуты на страницу. Результат хранится, пока документ открыт: повторное «Распознать текст» проходит быстрее."/>
 
-            <TextView android:id="@+id/q6" style="@style/ZIOffice.Faq.Question" android:text="Как открыть файлы Google Drive или Яндекс Диска"/>
-            <TextView android:id="@+id/a6" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Меню «Облако» → «Подключить папку» и выберите папку диска. После этого файлы можно открывать и сохранять в неё напрямую (без интернета они останутся в кэше)."/>
+            <TextView android:id="@+id/q6" style="@style/FaqQuestion" android:text="Как открыть файлы Google Drive или Яндекс Диска"/>
+            <TextView android:id="@+id/a6" style="@style/FaqAnswer" android:visibility="gone" android:text="Меню «Облако» → «Подключить папку» и выберите папку диска. После этого файлы можно открывать и сохранять в неё напрямую (без интернета они останутся в кэше)."/>
 
-            <TextView android:id="@+id/q7" style="@style/ZIOffice.Faq.Question" android:text="Не видно файла на телефоне"/>
-            <TextView android:id="@+id/a7" style="@style/ZIOffice.Faq.Answer" android:visibility="gone" android:text="Открывайте файл кнопкой «Открыть» — Android даёт доступ только к выбранному файлу. Для работы с папкой целиком подключите её через «Облако» → «Папка диска»."/>
+            <TextView android:id="@+id/q7" style="@style/FaqQuestion" android:text="Не видно файла на телефоне"/>
+            <TextView android:id="@+id/a7" style="@style/FaqAnswer" android:visibility="gone" android:text="Открывайте файл кнопкой «Открыть» — Android даёт доступ только к выбранному файлу. Для работы с папкой целиком подключите её через «Облако» → «Папка диска»."/>
 
             <TextView
                 android:id="@+id/footer"

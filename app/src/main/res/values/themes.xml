@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Строки частых вопросов на экране «О программе» -->
-    <style name="ZIOffice.Faq.Question">
+    <style name="FaqQuestion" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:paddingTop">12dp</item>
@@ -13,7 +13,7 @@
         <item name="android:clickable">true</item>
         <item name="android:focusable">true</item>
     </style>
-    <style name="ZIOffice.Faq.Answer">
+    <style name="FaqAnswer" parent="">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:paddingBottom">12dp</item>
