@@ -30,12 +30,14 @@ public class PdfZoomView extends View {
 
     /** Условная ширина страницы: по ней считается масштаб «по ширине». */
     private static final int VIRTUAL_WIDTH = 1000;
-    /** Сколько страниц держим в памяти одновременно. */
-    private static final int MAX_CACHED = 6;
+    /** Сколько страниц держим в памяти одновременно (одна страница ~6 МБ). */
+    private static final int MAX_CACHED = 4;
     private static final float GAP_DP = 12f;
 
     private final ArrayList<Bitmap> pages = new ArrayList<>();     // null — страница ещё не готова
     private final ArrayList<Boolean> pending = new ArrayList<>();  // запрос уже отправлен
+    private final ArrayList<Integer> tries = new ArrayList<>();    // сколько раз пробовали отрисовать
+    private static final int MAX_TRIES = 2;
     private final ArrayList<Integer> tops = new ArrayList<>();     // смещение страницы
     private final ArrayList<Integer> heights = new ArrayList<>();  // высота страницы
     private final float gap;
@@ -75,11 +77,11 @@ public class PdfZoomView extends View {
     public void setSource(PageSource s) {
         releaseAll();
         source = s;
-        pages.clear(); pending.clear(); tops.clear(); heights.clear(); contentH = 0;
+        pages.clear(); pending.clear(); tries.clear(); tops.clear(); heights.clear(); contentH = 0;
         if (s != null) {
             int n = Math.max(0, s.count());
             for (int i = 0; i < n; i++) {
-                pages.add(null); pending.add(false);
+                pages.add(null); pending.add(false); tries.add(0);
                 int w = Math.max(1, s.width(i)), h = Math.max(1, s.height(i));
                 int vh = Math.max(1, Math.round(VIRTUAL_WIDTH * h / (float) w));
                 tops.add(contentH);
@@ -103,7 +105,7 @@ public class PdfZoomView extends View {
         if (old == bmp) return;
         pages.set(index, bmp);
         if (old != null) releaseLater(index, old);
-        if (bmp == null) return; // не получилось — оставим заглушку
+        if (bmp == null) { invalidate(); return; } // не вышло — нарисуем заглушку с пояснением
         invalidate();
     }
 
@@ -149,8 +151,9 @@ public class PdfZoomView extends View {
         inverse.mapRect(viewRect); // теперь это область в «виртуальных» координатах
         int first = pageAt(viewRect.top), last = pageAt(viewRect.bottom);
         for (int i = Math.max(0, first - 1); i <= Math.min(tops.size() - 1, last + 1); i++) {
-            if (pages.get(i) == null && !pending.get(i)) {
+            if (pages.get(i) == null && !pending.get(i) && tries.get(i) < MAX_TRIES) {
                 pending.set(i, true);
+                tries.set(i, tries.get(i) + 1);
                 try { source.request(i); } catch (Exception ignored) { pending.set(i, false); }
             }
         }
@@ -215,7 +218,9 @@ public class PdfZoomView extends View {
                 canvas.drawBitmap(b, null, dst, paint);
             } else {
                 canvas.drawRect(0, top, VIRTUAL_WIDTH, bottom, placeholder);
-                canvas.drawText("Стр. " + (i + 1) + " — загрузка…", VIRTUAL_WIDTH / 2f, top + Math.min(120f, heights.get(i) / 2f), label);
+                boolean failed = tries.get(i) >= MAX_TRIES;
+                String msg = failed ? "Стр. " + (i + 1) + " — не удалось показать" : "Стр. " + (i + 1) + " — загрузка…";
+                canvas.drawText(msg, VIRTUAL_WIDTH / 2f, top + Math.min(120f, heights.get(i) / 2f), label);
             }
         }
         canvas.restore();

@@ -51,15 +51,25 @@ final class UpdateManager {
     static void checkIfDue(final Activity act) {
         long last = act.getSharedPreferences(PREFS, 0).getLong("last_check", 0L);
         if (System.currentTimeMillis() - last < CHECK_INTERVAL_MS) return;
-        check(act);
+        check(act, false);
+    }
+
+    /** Проверка по кнопке «Проверить обновления» — с показом результата. */
+    static void check(final Activity act) {
+        check(act, true);
     }
 
     /** Проверить наличие новой версии и при необходимости показать диалог. */
-    static void check(final Activity act) {
-        if (!busy.compareAndSet(false, true)) return;
+    static void check(final Activity act, final boolean manual) {
+        if (!busy.compareAndSet(false, true)) {
+            if (manual) Toast.makeText(act, "Проверка уже идёт…", Toast.LENGTH_SHORT).show();
+            return;
+        }
         new Thread(() -> {
             String tag = null, notes = null, apkUrl = null;
             boolean answered = false;
+            int httpCode = 0;
+            Exception failure = null;
             try {
                 HttpURLConnection c = (HttpURLConnection) new URL(LATEST_URL).openConnection();
                 c.setConnectTimeout(10000);
@@ -67,6 +77,7 @@ final class UpdateManager {
                 c.setRequestProperty("User-Agent", "ZI-Office-Update");
                 c.setRequestProperty("Accept", "application/vnd.github+json");
                 int code = c.getResponseCode();
+                httpCode = code;
                 answered = true; // сервер ответил — проверку можно считать состоявшейся
                 if (code == 200) {
                     try (InputStream in = c.getInputStream()) {
@@ -90,16 +101,22 @@ final class UpdateManager {
                         }
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) { failure = e; }
             busy.set(false);
             // Отметку времени ставим всегда, когда сервер ответил: иначе при
             // отсутствии новых версий GitHub дёргался бы при каждом запуске,
             // хотя обещан интервал раз в 6 часов.
             if (answered) act.getSharedPreferences(PREFS, 0).edit().putLong("last_check", System.currentTimeMillis()).apply();
-            if (tag == null || apkUrl == null || !isSafeHost(apkUrl)) return;
+            if (tag == null || apkUrl == null || !isSafeHost(apkUrl)) {
+                if (manual) toast(act, explain(httpCode, failure));
+                return;
+            }
             String remote = tag.startsWith("v") ? tag.substring(1) : tag;
             String local = BuildConfig.VERSION_NAME;
-            if (!isNewer(remote, local)) return;
+            if (!isNewer(remote, local)) {
+                if (manual) toast(act, "Установлена последняя версия " + local);
+                return;
+            }
             final String ver = remote;
             final String notesFinal = notes;
             final String urlFinal = apkUrl;
@@ -121,6 +138,20 @@ final class UpdateManager {
                         .show();
             });
         }).start();
+    }
+
+    /** Почему не удалось проверить обновления — человеческим языком. */
+    private static String explain(int httpCode, Exception failure) {
+        if (httpCode == 404) return "Репозиторий обновлений не найден: " + RELEASE_REPO;
+        if (httpCode == 403 || httpCode == 429) return "GitHub ограничил запросы, попробуйте позже";
+        if (httpCode >= 500) return "Ошибка на стороне GitHub (" + httpCode + ")";
+        if (failure != null) return "Не удалось проверить обновления. Проверьте интернет.";
+        if (httpCode != 0) return "В репозитории обновлений ещё нет релизов";
+        return "Не удалось проверить обновления";
+    }
+
+    private static void toast(final Activity act, final String msg) {
+        main().post(() -> { if (!act.isFinishing() && !act.isDestroyed()) Toast.makeText(act, msg, Toast.LENGTH_LONG).show(); });
     }
 
     private static void download(final Activity act, final String urlStr, final String ver) {
@@ -194,7 +225,7 @@ final class UpdateManager {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setDataAndType(uri, "application/vnd.android.package-archive");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            act.startActivity(Intent.createChooser(i, "Установить ZI Office " + ver));
+            act.startActivity(i); // сразу системный установщик, без лишнего выбора
         } catch (Exception e) {
             Toast.makeText(act, "Не удалось открыть установщик. Файл: " + apk.getPath(), Toast.LENGTH_LONG).show();
         }

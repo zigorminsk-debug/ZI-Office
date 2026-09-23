@@ -20,16 +20,23 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnNight).setOnClickListener(v -> { ThemePrefs.toggle(this); recreate(); });
         findViewById(R.id.btnDefault).setOnClickListener(v -> DefaultApps.prompt(this));
         findViewById(R.id.btnCall).setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:+375293371412"))); } catch (Exception e) { Toast.makeText(this, "+375293371412", Toast.LENGTH_LONG).show(); } });
-        tb.setOnLongClickListener(v -> {
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.app_name)
-                    .setMessage(getString(R.string.developer_name) + "\n" + getString(R.string.developer_phone_pretty) + "\n" + "Версия " + BuildConfig.VERSION_NAME)
-                    .setNeutralButton("Проверить обновления", (d, w) -> UpdateManager.check(this))
-                    .setPositiveButton("OK", null)
-                    .show();
-            return true;
-        });
+        tb.setOnLongClickListener(v -> { showAbout(); return true; });
         if (getIntent() != null && Intent.ACTION_VIEW.equals(getIntent().getAction()) && getIntent().getData() != null) openUri(getIntent().getData());
+    }
+    @Override public boolean onCreateOptionsMenu(android.view.Menu menu) { getMenuInflater().inflate(R.menu.main, menu); return true; }
+    @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_update) { UpdateManager.check(this); return true; }
+        if (id == R.id.action_about) { showAbout(); return true; }
+        return super.onOptionsItemSelected(item);
+    }
+    private void showAbout() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.app_name)
+                .setMessage(getString(R.string.developer_name) + "\n" + getString(R.string.developer_phone_pretty) + "\nВерсия " + BuildConfig.VERSION_NAME)
+                .setNeutralButton("Проверить обновления", (d, w) -> UpdateManager.check(this))
+                .setPositiveButton("OK", null)
+                .show();
     }
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);

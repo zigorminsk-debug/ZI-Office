@@ -19,7 +19,7 @@ public class ViewerActivity extends AppCompatActivity {
     private File cacheFile; private Uri source; private String displayName = "document", fileExt = "", viewerKind = "pdf";
     private boolean isNew, nativePdf, readerOn, ocrBusy, toolReload;
     private PdfRenderer pdfRenderer; private ParcelFileDescriptor pdfPfd; private final Object pdfLock = new Object();
-    private int[] pageW = new int[0], pageH = new int[0]; private boolean destroyed;
+    private int[] pageW = new int[0], pageH = new int[0]; private boolean destroyed, pageErrorShown;
     private final List<String> ocrPages = new ArrayList<>();
     private String ocrText = "", toolCmd = "rotate", extractSpec = "1", saveMime, saveName, pendingCloud;
     private final ByteArrayOutputStream saveBuf = new ByteArrayOutputStream();
@@ -188,7 +188,14 @@ public class ViewerActivity extends AppCompatActivity {
             try {
                 pageRender.execute(() -> {
                     final Bitmap bmp = renderPage(index);
-                    main.post(() -> { if (!destroyed) pdfZoom.putPage(index, bmp); else if (bmp != null && !bmp.isRecycled()) bmp.recycle(); });
+                    main.post(() -> {
+                        if (destroyed) { if (bmp != null && !bmp.isRecycled()) bmp.recycle(); return; }
+                        pdfZoom.putPage(index, bmp);
+                        if (bmp == null && !pageErrorShown) {
+                            pageErrorShown = true;
+                            Toast.makeText(ViewerActivity.this, "Не удалось показать страницы PDF", Toast.LENGTH_LONG).show();
+                        }
+                    });
                 });
             } catch (Exception ignored) { pdfZoom.putPage(index, null); }
         }
@@ -207,7 +214,11 @@ public class ViewerActivity extends AppCompatActivity {
                 float sc = targetW / (float) w;
                 if (h * sc > 2600f) sc = 2600f / h;                 // очень длинные страницы
                 int bw = Math.max(1, Math.round(w * sc)), bh = Math.max(1, Math.round(h * sc));
-                Bitmap bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.RGB_565);  // вдвое меньше памяти
+                // PdfRenderer умеет рисовать ТОЛЬКО в ARGB_8888: с RGB_565 он бросает
+                // исключение, и страница остаётся пустой. Память ограничиваем тем, что
+                // держим в кеше всего несколько страниц (см. PdfZoomView.MAX_CACHED).
+                Bitmap bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+                bmp.eraseColor(0xFFFFFFFF); // под страницей всегда белый лист
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
                 return bmp;
             } catch (Exception e) {
