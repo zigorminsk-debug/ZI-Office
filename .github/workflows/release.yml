@@ -146,6 +146,10 @@ jobs:
           draft: false
           prerelease: false
 
+      - name: Нет RELEASE_TOKEN
+        if: ${{ env.RELEASE_TOKEN == '' }}
+        run: echo "::warning::Не задан секрет RELEASE_TOKEN — релиз будет создан в этом приватном репозитории, и автообновление у пользователей НЕ сработает. Инструкция: АВТООБНОВЛЕНИЕ.md"
+
       - name: Публикация релиза в этом репозитории (если нет RELEASE_TOKEN)
         if: ${{ env.RELEASE_TOKEN == '' }}
         uses: softprops/action-gh-release@v3
