@@ -105,6 +105,21 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: cp app/build/outputs/apk/release/app-release.apk "ZIOffice-$VERSION.apk"
 
+      - name: Проверка APK
+        run: |
+          set -e
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | head -1 || true)
+          INFO=$("$AAPT" dump badging "$APK" | head -1 || true)
+          VCODE=$(echo "$INFO" | grep -oP "versionCode='\K[^']+" || true)
+          VNAME=$(echo "$INFO" | grep -oP "versionName='\K[^']+" || true)
+          SIZE=$(du -h "$APK" | cut -f1)
+          echo "APK версия $VNAME (код $VCODE), размер $SIZE"
+          unzip -l "$APK" | grep -q "assets/tessdata/rus.traineddata" || { echo "::error::в APK нет модели OCR"; exit 1; }
+          unzip -p "$APK" assets/viewer.html | grep -q "MAX_ROWS" || { echo "::error::в APK старая версия viewer.html"; exit 1; }
+          unzip -p "$APK" classes.dex | grep -q "assets/viewer.html" || true
+          echo "::notice::APK проверен — версия $VNAME (код $VCODE), размер $SIZE"
+
       - name: Описание релиза
         id: notes
         run: |
