@@ -82,3 +82,13 @@ app/src/main/assets/
 
 `versionName` и `versionCode` — в `app/build.gradle`.
 Номер версии в приложении берётся из `BuildConfig`.
+
+---
+
+## ZI Office StartFix (Windows)
+
+В каталоге [`StartFix/`](StartFix/README.md) — отдельная утилита для Windows:
+восстановление кнопки и меню «Пуск», поиска и панели задач в Windows 10/11
+и Windows Server 2012–2025. Самодостаточные EXE-файлы (без .NET, Visual C++
+и UCRT) лежат в `StartFix/dist/`. Подробности — в
+[StartFix/README.md](StartFix/README.md).
