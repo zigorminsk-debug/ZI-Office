@@ -26,18 +26,33 @@ public class CloudBrowserActivity extends AppCompatActivity {
         web.loadUrl("google".equals(cloud) ? "https://drive.google.com" : "https://disk.yandex.ru/client/disk");
     }
     private void download(String url, String name) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        final String fileName = safeName(name);
         Toast.makeText(this, "Скачиваем…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection(); c.setInstanceFollowRedirects(true);
                 String cookies = CookieManager.getInstance().getCookie(url); if (cookies != null) c.setRequestProperty("Cookie", cookies); c.connect();
-                File out = new File(getCacheDir(), name == null || name.isEmpty() ? "cloud.bin" : name);
+                File out = new File(getCacheDir(), fileName);
                 try (InputStream in = c.getInputStream(); FileOutputStream fo = new FileOutputStream(out)) { byte[] buf = new byte[8192]; int n; while ((n = in.read(buf)) > 0) fo.write(buf, 0, n); }
                 String kind = FileKind.fromNameAndMime(out.getName(), null);
-                runOnUiThread(() -> { if (FileKind.UNKNOWN.equals(kind)) Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show(); else ViewerActivity.openLocal(this, out, out.getName(), kind); });
+                runOnUiThread(() -> { if (isFinishing() || isDestroyed()) return; if (FileKind.UNKNOWN.equals(kind)) Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show(); else ViewerActivity.openLocal(this, out, out.getName(), kind); });
             } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Откройте файл через «Папка диска»", Toast.LENGTH_LONG).show()); }
         }).start();
     }
+    /** Имя из ссылки нельзя использовать как путь: убираем каталоги и «..». */
+    private static String safeName(String name) {
+        if (name == null) return "cloud.bin";
+        String n = name.replace('\\', '/');
+        int slash = n.lastIndexOf('/'); if (slash >= 0) n = n.substring(slash + 1);
+        n = n.replaceAll("[^\\p{L}\\p{N}._ ()\\[\\]-]", "_").trim();
+        if (n.isEmpty() || n.startsWith(".")) n = "cloud-" + n;
+        return n.length() > 120 ? n.substring(n.length() - 120) : n;
+    }
     @Override public void onBackPressed() { if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed(); }
     @Override protected void onPause() { super.onPause(); CloudSession.persist(this, cloud); }
+    @Override protected void onDestroy() {
+        try { if (web != null) { web.stopLoading(); web.setWebChromeClient(null); web.setWebViewClient(null); web.destroy(); web = null; } } catch (Exception ignored) {}
+        super.onDestroy();
+    }
 }

@@ -31,8 +31,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class UpdateManager {
     /** Публичный репозиторий, куда GitHub Actions публикует APK-релизы.
-     *  Должен совпадать с RELEASE_REPO в .github/workflows/release.yml. */
-    static final String RELEASE_REPO = "zigorminsk-debug/ZI-Office-Release";
+     *  Значение приходит из app/build.gradle (buildConfigField RELEASE_REPO,
+     *  можно переопределить сборкой: -PreleaseRepo=владелец/репозиторий). */
+    static final String RELEASE_REPO = BuildConfig.RELEASE_REPO;
     private static final String LATEST_URL = "https://api.github.com/repos/" + RELEASE_REPO + "/releases/latest";
     private static final String PREFS = "update";
     private static final long CHECK_INTERVAL_MS = 6L * 3600 * 1000L; // раз в 6 часов
@@ -58,18 +59,21 @@ final class UpdateManager {
         if (!busy.compareAndSet(false, true)) return;
         new Thread(() -> {
             String tag = null, notes = null, apkUrl = null;
+            boolean answered = false;
             try {
                 HttpURLConnection c = (HttpURLConnection) new URL(LATEST_URL).openConnection();
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(15000);
                 c.setRequestProperty("User-Agent", "ZI-Office-Update");
                 c.setRequestProperty("Accept", "application/vnd.github+json");
-                if (c.getResponseCode() == 200) {
+                int code = c.getResponseCode();
+                answered = true; // сервер ответил — проверку можно считать состоявшейся
+                if (code == 200) {
                     try (InputStream in = c.getInputStream()) {
                         ByteArrayOutputStream bo = new ByteArrayOutputStream();
                         byte[] b = new byte[8192]; int n;
                         while ((n = in.read(b)) > 0) bo.write(b, 0, n);
-                        JSONObject o = new JSONObject(new String(bo.toByteArray(), "UTF-8"));
+                        JSONObject o = new JSONObject(new String(bo.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
                         tag = o.optString("tag_name");
                         notes = o.optString("body");
                         JSONArray assets = o.optJSONArray("assets");
@@ -88,11 +92,14 @@ final class UpdateManager {
                 }
             } catch (Exception ignored) {}
             busy.set(false);
+            // Отметку времени ставим всегда, когда сервер ответил: иначе при
+            // отсутствии новых версий GitHub дёргался бы при каждом запуске,
+            // хотя обещан интервал раз в 6 часов.
+            if (answered) act.getSharedPreferences(PREFS, 0).edit().putLong("last_check", System.currentTimeMillis()).apply();
             if (tag == null || apkUrl == null || !isSafeHost(apkUrl)) return;
             String remote = tag.startsWith("v") ? tag.substring(1) : tag;
             String local = BuildConfig.VERSION_NAME;
             if (!isNewer(remote, local)) return;
-            act.getSharedPreferences(PREFS, 0).edit().putLong("last_check", System.currentTimeMillis()).apply();
             final String ver = remote;
             final String notesFinal = notes;
             final String urlFinal = apkUrl;
@@ -147,12 +154,16 @@ final class UpdateManager {
                 }
                 long total = c.getContentLengthLong();
                 try (InputStream in = c.getInputStream(); FileOutputStream fo = new FileOutputStream(apk)) {
-                    byte[] b = new byte[65536]; long done = 0; int n;
+                    byte[] b = new byte[65536]; long done = 0; int n, shownPct = -1;
                     while ((n = in.read(b)) > 0) {
                         fo.write(b, 0, n); done += n;
                         if (total > 0) {
                             final int p = (int) (done * 100 / total);
-                            main().post(() -> { if (dlg.isShowing()) dlg.setMessage("Загрузка… " + p + "%"); });
+                            // обновляем текст не чаще, чем меняется процент
+                            if (p != shownPct) {
+                                shownPct = p;
+                                main().post(() -> { if (dlg.isShowing()) dlg.setMessage("Загрузка… " + p + "%"); });
+                            }
                         }
                     }
                 }

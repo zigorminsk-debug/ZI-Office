@@ -12,19 +12,23 @@ import androidx.appcompat.app.AlertDialog; import androidx.appcompat.app.AppComp
 import com.google.android.material.appbar.MaterialToolbar; import com.google.android.material.button.MaterialButton;
 import java.io.ByteArrayOutputStream; import java.io.File; import java.io.FileInputStream; import java.io.FileOutputStream;
 import java.io.InputStream; import java.io.OutputStream; import java.nio.charset.StandardCharsets;
-import java.util.ArrayList; import java.util.List; import java.util.concurrent.Executors;
-public class ViewerActivity extends AppCompatActivity {
+import java.util.ArrayList; import java.util.List; public class ViewerActivity extends AppCompatActivity {
     private WebView web, toolWeb; private PdfZoomView pdfZoom; private ZoomSurface webZoom;
     private View readerBar; private MaterialButton btnPlay; private MaterialToolbar toolbar;
     private File cacheFile; private Uri source; private String displayName = "document", fileExt = "", viewerKind = "pdf";
     private boolean isNew, nativePdf, readerOn, ocrBusy, toolReload;
     private PdfRenderer pdfRenderer; private ParcelFileDescriptor pdfPfd; private final Object pdfLock = new Object();
-    private final List<Bitmap> pdfBitmaps = new ArrayList<>(); private final List<String> ocrPages = new ArrayList<>();
+    private int[] pageW = new int[0], pageH = new int[0]; private boolean destroyed;
+    private final List<String> ocrPages = new ArrayList<>();
     private String ocrText = "", toolCmd = "rotate", extractSpec = "1", saveMime, saveName, pendingCloud;
     private final ByteArrayOutputStream saveBuf = new ByteArrayOutputStream();
     private int readPx = 20, pdfCount; private TtsHelper tts; private final Handler main = new Handler(Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService worker = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "zi-worker"); t.setDaemon(true); return t;
+    });
+    // Отдельный поток, чтобы отрисовка страниц не ждала OCR/инструменты PDF.
+    private final java.util.concurrent.ExecutorService pageRender = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "zi-pdf"); t.setDaemon(true); return t;
     });
     private ActivityResultLauncher<Intent> createDoc;
     public static void openLocal(Context ctx, File file, String name, String kind) {
@@ -88,7 +92,7 @@ public class ViewerActivity extends AppCompatActivity {
             }
         }
         if ("pdf".equals(viewerKind) && !isNew && openPdfRenderer()) {
-            nativePdf = true; if (webZoom != null) webZoom.setVisibility(View.GONE); pdfZoom.setVisibility(View.VISIBLE); paintPdf();
+            nativePdf = true; if (webZoom != null) webZoom.setVisibility(View.GONE); pdfZoom.setVisibility(View.VISIBLE); loadPdf();
         } else {
             nativePdf = false; pdfZoom.setVisibility(View.GONE); if (webZoom != null) webZoom.setVisibility(View.VISIBLE); web.loadUrl("http://app.local/viewer.html");
         }
@@ -143,28 +147,76 @@ public class ViewerActivity extends AppCompatActivity {
         try { if (pdfPfd != null) pdfPfd.close(); } catch (Exception ignored) {}
         pdfRenderer = null; pdfPfd = null;
     }
-    private void paintPdf() {
+    /** Готовит документ: размеры страниц читаем сразу, картинки — по мере показа. */
+    private void loadPdf() {
         if (pdfRenderer == null && !openPdfRenderer()) return;
-        int targetW = Math.max(200, getResources().getDisplayMetrics().widthPixels);
+        final int expected = Math.max(1, pdfCount);
+        toolbar.setSubtitle(expected + " стр. · чтение…");
         worker.execute(() -> {
+            int[] w = null, h = null;
             try {
-                List<Bitmap> bitmaps = new ArrayList<>();
                 synchronized (pdfLock) {
-                    if (pdfRenderer == null) return; pdfCount = pdfRenderer.getPageCount();
-                    for (int i = 0; i < pdfCount; i++) {
-                        PdfRenderer.Page page = pdfRenderer.openPage(i);
-                        int w = page.getWidth(), h = page.getHeight(); float sc = targetW / (float) Math.max(1, w);
-                        Bitmap bmp = Bitmap.createBitmap(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)), Bitmap.Config.ARGB_8888);
-                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); page.close(); bitmaps.add(bmp);
+                    if (pdfRenderer != null) {
+                        int n = pdfRenderer.getPageCount();
+                        if (n > 0) {
+                            w = new int[n]; h = new int[n];
+                            for (int i = 0; i < n; i++) {
+                                PdfRenderer.Page page = pdfRenderer.openPage(i);
+                                w[i] = Math.max(1, page.getWidth()); h[i] = Math.max(1, page.getHeight()); page.close();
+                            }
+                        }
                     }
                 }
-                main.post(() -> {
-                    for (Bitmap b : pdfBitmaps) try { b.recycle(); } catch (Exception ignored) {}
-                    pdfBitmaps.clear(); pdfBitmaps.addAll(bitmaps); pdfZoom.setPages(pdfBitmaps);
-                    toolbar.setSubtitle(pdfCount + " стр. · 100%");
-                });
-            } catch (Exception e) { main.post(() -> Toast.makeText(this, "Не удалось прочитать PDF", Toast.LENGTH_LONG).show()); }
+            } catch (Exception e) { w = null; h = null; }
+            final int[] fw = w, fh = h;
+            main.post(() -> {
+                if (destroyed || fw == null) return;
+                pageW = fw; pageH = fh; pdfCount = fw.length;
+                pdfZoom.setSource(new PdfPages());
+                toolbar.setSubtitle(pdfCount + " стр. · 100%");
+            });
         });
+    }
+
+    /** Страницы PDF по запросу: в памяти держатся только видимые (см. PdfZoomView). */
+    private class PdfPages implements PdfZoomView.PageSource {
+        @Override public int count() { return pageW.length; }
+        @Override public int width(int i) { return i >= 0 && i < pageW.length ? pageW[i] : 595; }
+        @Override public int height(int i) { return i >= 0 && i < pageH.length ? pageH[i] : 842; }
+        @Override public void request(final int index) {
+            try {
+                pageRender.execute(() -> {
+                    final Bitmap bmp = renderPage(index);
+                    main.post(() -> { if (!destroyed) pdfZoom.putPage(index, bmp); else if (bmp != null && !bmp.isRecycled()) bmp.recycle(); });
+                });
+            } catch (Exception ignored) { pdfZoom.putPage(index, null); }
+        }
+        @Override public void discard(int index, Bitmap bmp) { if (bmp != null && !bmp.isRecycled()) bmp.recycle(); }
+    }
+
+    /** Рисует одну страницу в bitmap (фоновый поток). */
+    private Bitmap renderPage(int index) {
+        synchronized (pdfLock) {
+            if (pdfRenderer == null || destroyed) return null;
+            PdfRenderer.Page page = null;
+            try {
+                page = pdfRenderer.openPage(index);
+                int w = Math.max(1, page.getWidth()), h = Math.max(1, page.getHeight());
+                int targetW = Math.max(600, getResources().getDisplayMetrics().widthPixels);
+                float sc = targetW / (float) w;
+                if (h * sc > 2600f) sc = 2600f / h;                 // очень длинные страницы
+                int bw = Math.max(1, Math.round(w * sc)), bh = Math.max(1, Math.round(h * sc));
+                Bitmap bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.RGB_565);  // вдвое меньше памяти
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                return bmp;
+            } catch (Exception e) {
+                return null;
+            } catch (OutOfMemoryError e) {
+                return null;
+            } finally {
+                try { if (page != null) page.close(); } catch (Exception ignored) {}
+            }
+        }
     }
     private void zoom(int dir) {
         if (nativePdf && pdfZoom != null) pdfZoom.zoomBy(dir > 0 ? 1.25f : 0.8f);
@@ -200,23 +252,35 @@ public class ViewerActivity extends AppCompatActivity {
         ocrBusy = true; Toast.makeText(this, "Распознаём текст…", Toast.LENGTH_SHORT).show();
         worker.execute(() -> {
             StringBuilder sb = new StringBuilder(); List<String> pages = new ArrayList<>();
-            try {
+            int n = 0;
+            synchronized (pdfLock) { if (pdfRenderer != null) n = pdfRenderer.getPageCount(); }
+            if (n == 0) { main.post(() -> { ocrBusy = false; }); return; }
+            for (int i = 0; i < n && !destroyed; i++) {
+                Bitmap bmp = null;
                 synchronized (pdfLock) {
-                    if (pdfRenderer == null) { main.post(() -> { ocrBusy = false; }); return; }
-                    int n = pdfRenderer.getPageCount();
-                    for (int i = 0; i < n; i++) {
-                        PdfRenderer.Page page = pdfRenderer.openPage(i);
-                        int w = page.getWidth(), h = page.getHeight(); float sc = 1400f / Math.max(1, Math.max(w, h));
-                        Bitmap bmp = Bitmap.createBitmap(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)), Bitmap.Config.ARGB_8888);
-                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); page.close();
-                        String t = OcrHelper.recognizeBitmap(ViewerActivity.this, bmp); bmp.recycle();
-                        pages.add(t == null ? "" : t);
-                        if (t != null && !t.isEmpty()) { if (sb.length() > 0) sb.append("\n\n— стр. ").append(i + 1).append(" —\n\n"); else sb.append("— стр. ").append(i + 1).append(" —\n\n"); sb.append(t); }
+                    if (pdfRenderer != null) {
+                        PdfRenderer.Page page = null;
+                        try {
+                            page = pdfRenderer.openPage(i);
+                            int w = Math.max(1, page.getWidth()), h = Math.max(1, page.getHeight());
+                            float sc = 1400f / Math.max(1, Math.max(w, h));
+                            bmp = Bitmap.createBitmap(Math.max(1, Math.round(w * sc)), Math.max(1, Math.round(h * sc)), Bitmap.Config.ARGB_8888);
+                            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
+                        } catch (Exception e) { bmp = null; } catch (OutOfMemoryError e) { bmp = null; } finally {
+                            try { if (page != null) page.close(); } catch (Exception ignored) {}
+                        }
                     }
                 }
-            } catch (Exception ignored) {}
+                if (bmp == null) { pages.add(""); continue; }
+                // распознаём вне блокировки, чтобы просмотр PDF не замирал
+                String t = OcrHelper.recognizeBitmap(ViewerActivity.this, bmp);
+                bmp.recycle();
+                pages.add(t == null ? "" : t);
+                if (t != null && !t.isEmpty()) { if (sb.length() > 0) sb.append("\n\n— стр. ").append(i + 1).append(" —\n\n"); else sb.append("— стр. ").append(i + 1).append(" —\n\n"); sb.append(t); }
+            }
             String text = sb.toString().trim();
             main.post(() -> {
+                if (destroyed) return;
                 ocrBusy = false; ocrText = text; ocrPages.clear(); ocrPages.addAll(pages);
                 if (text.isEmpty()) { Toast.makeText(this, "Текст на страницах не найден", Toast.LENGTH_LONG).show(); return; }
                 if (thenPlay && tts != null) { setReader(true); tts.play(text); }
@@ -268,7 +332,7 @@ public class ViewerActivity extends AppCompatActivity {
         byte[] data = saveBytes(); if (data.length == 0) { Toast.makeText(this, "Не удалось сохранить", Toast.LENGTH_SHORT).show(); return; }
         if (toolReload) {
             toolReload = false;
-            try { if (cacheFile == null) cacheFile = new File(getCacheDir(), "open-" + System.currentTimeMillis()); try (FileOutputStream fo = new FileOutputStream(cacheFile)) { fo.write(data); } ocrText = ""; ocrPages.clear(); if (openPdfRenderer()) paintPdf(); Toast.makeText(this, "Готово. Сохраните, если нужно записать файл.", Toast.LENGTH_LONG).show(); }
+            try { if (cacheFile == null) cacheFile = new File(getCacheDir(), "open-" + System.currentTimeMillis()); try (FileOutputStream fo = new FileOutputStream(cacheFile)) { fo.write(data); } ocrText = ""; ocrPages.clear(); if (!openPdfRenderer()) { Toast.makeText(this, "Не удалось открыть изменённый PDF", Toast.LENGTH_LONG).show(); return; } loadPdf(); Toast.makeText(this, "Готово. Сохраните, если нужно записать файл.", Toast.LENGTH_LONG).show(); }
             catch (Exception e) { Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show(); }
             return;
         }
@@ -279,7 +343,10 @@ public class ViewerActivity extends AppCompatActivity {
             if (created != null && CloudSave.write(this, created, data)) { Toast.makeText(this, "Сохранено в " + name, Toast.LENGTH_SHORT).show(); return; }
             createSaveAs(); return;
         }
-        if (source != null && !isNew && writeBytes(source, data)) { Toast.makeText(this, "Сохранено в исходный файл", Toast.LENGTH_SHORT).show(); return; }
+        // HTML-выгрузка из WebView не должна затирать исходный Word/Excel-файл:
+        // для неё всегда спрашиваем, куда сохранить (с расширением .html).
+        boolean html = saveMime != null && saveMime.startsWith("text/html");
+        if (!html && source != null && !isNew && writeBytes(source, data)) { Toast.makeText(this, "Сохранено в исходный файл", Toast.LENGTH_SHORT).show(); return; }
         createSaveAs();
     }
     private void writeTo(Uri uri) { if (writeBytes(uri, saveBytes())) Toast.makeText(this, "Сохранено", Toast.LENGTH_SHORT).show(); else Toast.makeText(this, "Не удалось сохранить", Toast.LENGTH_SHORT).show(); }
@@ -342,12 +409,22 @@ public class ViewerActivity extends AppCompatActivity {
     }
     @Override public void onBackPressed() { if (readerOn) { setReader(false); return; } super.onBackPressed(); }
     @Override protected void onPause() { super.onPause(); if (tts != null) tts.pause(); }
-    @Override protected void onDestroy() { worker.shutdownNow(); if (tts != null) tts.shutdown(); synchronized (pdfLock) { closePdfLocked(); } super.onDestroy(); }
+    @Override protected void onDestroy() {
+        destroyed = true;
+        try { pdfZoom.setSource(null); } catch (Exception ignored) {} // страницы выгружаются из памяти
+        pageRender.shutdownNow(); worker.shutdownNow();
+        if (tts != null) tts.shutdown();
+        synchronized (pdfLock) { closePdfLocked(); }
+        try {
+            if (web != null) { web.stopLoading(); web.setWebChromeClient(null); web.setWebViewClient(null); web.removeAllViews(); web.destroy(); web = null; }
+            if (toolWeb != null) { toolWeb.stopLoading(); toolWeb.setWebChromeClient(null); toolWeb.setWebViewClient(null); toolWeb.removeAllViews(); toolWeb.destroy(); toolWeb = null; }
+        } catch (Exception ignored) {}
+        super.onDestroy();
+    }
     public class Bridge {
         @JavascriptInterface public String kind() { return viewerKind; }
-        @JavascriptInterface public String fileExt() { return fileExt; }
-        @JavascriptInterface public String fileName() { return displayName; }
         @JavascriptInterface public boolean isNew() { return isNew; }
+        @JavascriptInterface public String fileName() { return displayName; }
         @JavascriptInterface public boolean isNight() { return ThemePrefs.isNight(ViewerActivity.this); }
         @JavascriptInterface public String toolCmd() { return toolCmd; }
         @JavascriptInterface public String extractSpec() { return extractSpec; }
@@ -363,7 +440,7 @@ public class ViewerActivity extends AppCompatActivity {
         @JavascriptInterface public void beginSave(String mime, String name) { saveBuf.reset(); saveMime = mime; saveName = name; }
         @JavascriptInterface public void appendChunk(String chunk) { if (chunk != null && !chunk.isEmpty()) try { saveBuf.write(Base64.decode(chunk, Base64.DEFAULT)); } catch (Exception ignored) {} }
         @JavascriptInterface public void endSave() { runOnUiThread(ViewerActivity.this::finishSave); }
-        @JavascriptInterface public void ready() { runOnUiThread(() -> main.postDelayed(() -> { if (webZoom == null || nativePdf) return; int h = Math.round(web.getContentHeight() * getResources().getDisplayMetrics().density); webZoom.setChildHeight(Math.max(webZoom.getHeight(), h)); }, 200)); }
+        @JavascriptInterface public void ready() { runOnUiThread(() -> main.postDelayed(() -> { if (destroyed || webZoom == null || nativePdf) return; int h = Math.round(web.getContentHeight() * getResources().getDisplayMetrics().density); webZoom.setChildHeight(Math.max(webZoom.getHeight(), h)); }, 200)); }
         @JavascriptInterface public void fail(String m) { runOnUiThread(() -> Toast.makeText(ViewerActivity.this, m == null ? "Ошибка" : m, Toast.LENGTH_LONG).show()); }
         @JavascriptInterface public void onReadText(String t) { runOnUiThread(() -> { if (tts != null) tts.play(t); }); }
         @JavascriptInterface public void visualZoom(String factor) { try { float f = Float.parseFloat(factor); runOnUiThread(() -> { if (webZoom != null) webZoom.zoomBy(f); }); } catch (Exception ignored) {} }

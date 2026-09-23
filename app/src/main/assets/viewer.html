@@ -35,7 +35,12 @@ function toggleNight(){document.body.classList.toggle('night')}
 function showBookmarks(){try{var b=JSON.parse(Android.getBookmarks()||'[]');alert('Закладки: '+(b.join(', ')||'нет'))}catch(e){}}
 function exportDocument(){
   try{
-    Android.beginSave('text/html','document.html');
+    var base='document';
+    try{
+      var n=Android.fileName(); 
+      if(n){ n=String(n).replace(/\\/g,'/'); n=n.substring(n.lastIndexOf('/')+1); n=n.replace(/\.[A-Za-z0-9]{1,5}$/,''); if(n) base=n; }
+    }catch(e){}
+    Android.beginSave('text/html', base+'.html');
     var html=document.getElementById('doc').innerHTML;
     Android.appendChunk(btoa(unescape(encodeURIComponent('<!DOCTYPE html><html><body>'+html+'</body></html>'))));
     Android.endSave();
