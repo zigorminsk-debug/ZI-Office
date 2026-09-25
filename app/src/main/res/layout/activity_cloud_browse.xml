@@ -6,7 +6,7 @@
         <com.google.android.material.button.MaterialButton android:id="@+id/btnUp" android:text="Назад" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
         <com.google.android.material.button.MaterialButton android:id="@+id/btnSaf" android:text="Выбрать папку" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
     </LinearLayout>
-    <ScrollView android:layout_width="match_parent" android:layout_height="match_parent">
+    <com.docreader.app.ElasticScrollView android:layout_width="match_parent" android:layout_height="match_parent">
         <LinearLayout android:id="@+id/fileList" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    </ScrollView>
+    </com.docreader.app.ElasticScrollView>
 </LinearLayout>

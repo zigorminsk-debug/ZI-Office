@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/paper">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/teal_700"
+        android:title="Настройка обновлений"
+        android:titleTextColor="#FFFFFF"
+        android:navigationIcon="?attr/homeAsUpIndicator"/>
+
+    <com.docreader.app.ElasticScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/channelText"
+                android:textColor="@color/ink"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                style="@style/FaqAnswer"
+                android:text="Приложение берёт обновления из вашего репозитория на GitHub. Он закрытый, поэтому нужен токен доступа — он хранится только на этом телефоне и даёт право только читать релизы."/>
+
+            <!-- Способ 1: токен (быстро) -->
+            <TextView
+                style="@style/FaqQuestion"
+                android:text="Способ 1. Токен доступа (быстро, ничего больше не нужно)"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMakeToken"
+                android:text="1. Создать токен на GitHub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                style="@style/FaqAnswer"
+                android:text="На странице токена: Repository access → Only select repositories → ZI-Office; Permissions → Repository permissions → Contents → Read-only. Затем «Generate token» и скопируйте его."/>
+
+            <EditText
+                android:id="@+id/tokenInput"
+                android:hint="Вставьте токен (github_pat_… или ghp_…)"
+                android:inputType="textVisiblePassword"
+                android:textSize="14sp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveToken"
+                android:text="2. Сохранить и проверить обновления"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnClearToken"
+                android:text="Убрать токен"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"/>
+
+            <!-- Способ 2: публичный репозиторий (для всех устройств сразу) -->
+            <TextView
+                style="@style/FaqQuestion"
+                android:text="Способ 2. Публичный репозиторий (если обновляться должны несколько телефонов)"/>
+
+            <TextView
+                style="@style/FaqAnswer"
+                android:text="Тогда токен на телефоне не нужен: релизы публикуются в открытый репозиторий ZI-Office-Release, и любое устройство видит их без доступа."/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMakeRepo"
+                android:text="1. Создать публичный репозиторий ZI-Office-Release"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMakeWriteToken"
+                android:text="2. Выпустить токен с правом записи (Contents: Read and write)"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddSecret"
+                android:text="3. Добавить его в секреты как RELEASE_TOKEN"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCheckNow"
+                android:text="Проверить обновления сейчас"
+                android:layout_marginTop="12dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <ProgressBar
+                android:id="@+id/setupProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:indeterminate="true"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                android:id="@+id/setupStatus"
+                android:textColor="@color/muted"
+                android:textSize="13sp"
+                android:paddingTop="6dp"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                style="@style/FaqAnswer"
+                android:text="Как проверить: нажмите «Проверить обновления сейчас». Если новая версия уже опубликована, приложение сразу предложит её скачать и установить."/>
+
+        </LinearLayout>
+    </com.docreader.app.ElasticScrollView>
+</LinearLayout>

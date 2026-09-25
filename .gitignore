@@ -5,4 +5,11 @@ local.properties
 .idea/
 *.iml
 .DS_Store
-ZI-Office-*.apk
+
+# Готовые сборки в репозитории не храним: APK собирает GitHub Actions
+# и выдаёт как артефакт workflow + релиз (см. .github/workflows/).
+*.apk
+*.aab
+
+# Логи сборки
+*.log

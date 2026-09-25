@@ -1,23 +1,22 @@
-name: Сборка и релиз APK
+name: Релиз APK
 
-# Выпускает новую версию:
-#  1) собирает release-APK,
-#  2) публикует GitHub Release с APK в ПУБЛИЧНОМ репозитории
-#     (по умолчанию zigorminsk-debug/ZI-Office-Release) — оттуда приложение
-#     само предлагает обновление.
+# Выпуск версии (это то, что видят пользователи приложения как обновление):
+#  1) собирает release-APK с номером версии из тега,
+#  2) выкладывает APK артефактом,
+#  3) публикует GitHub Release с APK — оттуда приложение само предлагает обновление.
 #
 # Как выпустить версию:
-#   1. В app/build.gradle увеличить versionName (напр. "2.24") и versionCode.
-#   2. Закоммитить и на main создать тег:  git tag v2.24 && git push origin v2.24
-#      (или запустить workflow вручную: Actions -> Сборка и релиз APK -> Run workflow,
-#       указав номер версии).
+#   git tag v2.24 && git push origin v2.24
+#   (или Actions -> «Релиз APK» -> Run workflow и указать номер версии)
 #
-# Один раз нужно подготовить: см. АВТООБНОВЛЕНИЕ.md
-#   - публичный репозиторий для релизов,
-#   - secret RELEASE_TOKEN (токен с доступом на запись к нему).
-# Имя репозитория можно переопределить переменной репозитория RELEASE_REPO
-# (Settings -> Secrets and variables -> Variables) и константой RELEASE_REPO
-# в app/src/main/java/com/docreader/app/UpdateManager.java.
+# Номер версии в APK берётся из тега/поля ввода, а versionCode считается из него
+# автоматически (2.24 -> 20400) — версия заведомо новее предыдущей, поэтому
+# Android спокойно ставит обновление поверх.
+#
+# Одноразовая настройка публичного репозитория релизов и секрета RELEASE_TOKEN —
+# см. АВТООБНОВЛЕНИЕ.md. Если секрета нет, релиз публикуется здесь (в приватном
+# репозитории) — APK будет доступен, но автообновление у клиентов не сработает,
+# потому что приватный репозиторий приложению недоступен.
 
 on:
   push:
@@ -26,12 +25,16 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Номер версии (совпадает с versionName, напр. 2.24)'
-        required: true
+        description: 'Номер версии (например 2.24). Пусто — взять из app/build.gradle'
+        required: false
         default: ''
 
 permissions:
   contents: write
+
+env:
+  RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
+  RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
 jobs:
   release:
@@ -40,19 +43,18 @@ jobs:
     env:
       ANDROID_HOME: /home/runner/android-sdk
       ANDROID_SDK_ROOT: /home/runner/android-sdk
-      RELEASE_REPO: ${{ vars.RELEASE_REPO || 'zigorminsk-debug/ZI-Office-Release' }}
-      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Android SDK
         run: |
@@ -65,44 +67,81 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Gradle memory (CI)
+      - name: Память Gradle (CI)
         run: |
           sed -i 's/-Xmx512m/-Xmx3g/' gradle.properties
           sed -i 's/-XX:MaxMetaspaceSize=256m/-XX:MaxMetaspaceSize=768m/' gradle.properties
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
-
-      - name: Version
+      - name: Номер версии
         id: ver
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          VN=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
-          if [ -z "$VN" ]; then echo "::error::versionName не найден в app/build.gradle"; exit 1; fi
-          VN=${VN#v}
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.version }}" ]; then
-            VN=${{ github.event.inputs.version }}
-            VN=${VN#v}
+          set -e
+          BASE=$(grep -oP '^def appVersionName = "\K[^"]+' app/build.gradle | head -1 || true)
+          if [ -z "$BASE" ]; then echo "::error::не найден номер версии в app/build.gradle (строка: def appVersionName = \"...\")"; exit 1; fi
+          VN="$BASE"
+          if [ "$EVENT" = "workflow_dispatch" ] && [ -n "$INPUT_VERSION" ]; then VN="$INPUT_VERSION"; fi
+          if [ "$EVENT" = "push" ]; then VN="$REF_NAME"; fi
+          VN="${VN#v}"
+          if [ -z "$VN" ]; then echo "::error::пустой номер версии"; exit 1; fi
+          if [ "$EVENT" = "push" ] && [ "$VN" != "$BASE" ]; then
+            echo "::warning::Тег v$VN не совпадает с versionName $BASE в app/build.gradle — собираем как $VN"
           fi
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF_NAME#v}"
-            if [ -n "$TAG" ] && [ "$TAG" != "$VN" ]; then
-              echo "::warning::Тег ${TAG} не совпадает с versionName ${VN} — релиз будет создан как v${VN}"
-            fi
-          fi
-          echo "vn=${VN}" >> "$GITHUB_OUTPUT"
-          echo "Версия: ${VN}"
+          echo "version=$VN" >> "$GITHUB_OUTPUT"
+          echo "Собираем версию: $VN"
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk "ZIOffice-${{ steps.ver.outputs.vn }}.apk"
+      - name: Сборка release APK
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease -PversionName="$VERSION" --no-daemon --stacktrace 2>&1 | tee build.log
 
-      - name: Release notes
+      # Ошибки компиляции видны в аннотациях и в описании запуска:
+      # скачивать лог не нужно.
+      - name: Диагностика ошибок
+        if: failure()
+        run: |
+          set +e
+          echo "### Ошибки сборки" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -nE "error:|e: |Execution failed|FAILURE:|Caused by" build.log 2>/dev/null | head -60 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "error:|\.java:[0-9]+:|\.xml:[0-9]+:|e: " build.log 2>/dev/null | head -8 | while IFS= read -r line; do
+            echo "::error title=Ошибка сборки::${line}"
+          done
+
+      - name: Переименовать APK
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: cp app/build/outputs/apk/release/app-release.apk "ZIOffice-$VERSION.apk"
+
+      - name: Проверка APK
+        run: |
+          set -e
+          APK=app/build/outputs/apk/release/app-release.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | head -1 || true)
+          INFO=$("$AAPT" dump badging "$APK" | head -1 || true)
+          VCODE=$(echo "$INFO" | grep -oP "versionCode='\K[^']+" || true)
+          VNAME=$(echo "$INFO" | grep -oP "versionName='\K[^']+" || true)
+          SIZE=$(du -h "$APK" | cut -f1)
+          echo "APK версия $VNAME (код $VCODE), размер $SIZE"
+          unzip -l "$APK" | grep -q "assets/tessdata/rus.traineddata" || { echo "::error::в APK нет модели OCR"; exit 1; }
+          unzip -p "$APK" assets/viewer.html | grep -q "MAX_ROWS" || { echo "::error::в APK старая версия viewer.html"; exit 1; }
+          unzip -p "$APK" classes.dex | grep -q "assets/viewer.html" || true
+          echo "::notice::APK проверен — версия $VNAME (код $VCODE), размер $SIZE"
+
+      - name: Описание релиза
         id: notes
         run: |
           set -e
           {
-            echo "## ZI Office v${{ steps.ver.outputs.vn }}"
+            echo "## ZI Office v${{ steps.ver.outputs.version }}"
             echo ""
-            echo "Установите APK поверх текущей версии (подпись та же)."
+            echo "Установите APK поверх текущей версии — подпись та же, данные сохраняются."
             echo ""
             echo "### Изменения"
             echo ""
@@ -115,19 +154,68 @@ jobs:
           } > "$RUNNER_TEMP/NOTES.md"
           echo "body_file=$RUNNER_TEMP/NOTES.md" >> "$GITHUB_OUTPUT"
 
-      - name: Check release token
-        if: ${{ env.RELEASE_TOKEN == '' }}
-        run: 'echo "::warning::Секрет RELEASE_TOKEN не задан (Settings -> Secrets and variables -> Actions) — APK собран, но релиз не опубликован. Инструкция: АВТООБНОВЛЕНИЕ.md"'
+      - name: APK артефактом
+        uses: actions/upload-artifact@v7
+        with:
+          name: ZIOffice-${{ steps.ver.outputs.version }}
+          path: ZIOffice-${{ steps.ver.outputs.version }}.apk
+          if-no-files-found: error
+          retention-days: 90
 
-      - name: Publish GitHub Release
+      - name: Публикация релиза (публичный репозиторий обновлений)
         if: ${{ env.RELEASE_TOKEN != '' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           repository: ${{ env.RELEASE_REPO }}
           token: ${{ env.RELEASE_TOKEN }}
-          tag_name: v${{ steps.ver.outputs.vn }}
-          name: ZI Office v${{ steps.ver.outputs.vn }}
-          body_path: ${{ steps.notes.outputs.body_file }}
-          files: ZIOffice-${{ steps.ver.outputs.vn }}.apk
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: ZI Office v${{ steps.ver.outputs.version }}
+          body_path: ${{ runner.temp }}/NOTES.md
+          files: ZIOffice-${{ steps.ver.outputs.version }}.apk
           draft: false
           prerelease: false
+
+      - name: Нет RELEASE_TOKEN
+        if: ${{ env.RELEASE_TOKEN == '' }}
+        run: |
+          echo "::warning::Не задан секрет RELEASE_TOKEN — релиз будет создан в этом приватном репозитории и автообновление у пользователей не сработает. Инструкция в файле АВТООБНОВЛЕНИЕ.md"
+
+      - name: Публикация релиза в этом репозитории (если нет RELEASE_TOKEN)
+        if: ${{ env.RELEASE_TOKEN == '' }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: ZI Office v${{ steps.ver.outputs.version }}
+          body_path: ${{ runner.temp }}/NOTES.md
+          files: ZIOffice-${{ steps.ver.outputs.version }}.apk
+          draft: false
+          prerelease: false
+
+      - name: Итог
+        if: always()
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          {
+            echo "## Релиз ZI Office v${VERSION}"
+            echo ""
+            echo "- APK: артефакт «ZIOffice-${VERSION}» (внизу страницы запуска)"
+            if [ -n "$RELEASE_TOKEN" ]; then
+              echo "- релиз опубликован в публичном репозитории: https://github.com/${RELEASE_REPO}/releases"
+              echo "- автообновление у пользователей заработает при следующем запуске приложения"
+            else
+              echo "- ⚠️ секрет RELEASE_TOKEN не задан: релиз создан здесь, автообновление работать НЕ будет"
+              echo ""
+              echo "Что сделать один раз (5 минут), подробно — в АВТООБНОВЛЕНИЕ.md:"
+              echo "1. создать публичный репозиторий для APK (по умолчанию ${RELEASE_REPO});"
+              echo "2. выпустить токен с правом Contents: Read and write на этот репозиторий;"
+              echo "3. положить его в Settings → Secrets and variables → Actions как RELEASE_TOKEN."
+            fi
+            echo ""
+            if [ -f build.log ]; then
+              echo "### Хвост лога сборки"
+              echo '```'
+              tail -n 40 build.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,4 +1,37 @@
 plugins { id 'com.android.application' }
+
+// Версия приложения задаётся ТОЛЬКО здесь (versionName), а versionCode
+// считается из неё: 2.24 -> 20400, 2.24.1 -> 20401, 2.25 -> 20500.
+// Так невозможно «забыть поднять versionCode» — а без него Android
+// отказывается устанавливать обновление поверх старой версии.
+// CI может переопределить имя версии без правки файла:
+//   ./gradlew assembleRelease -PversionName=2.25
+// ---- ВЕРСИЯ ПРИЛОЖЕНИЯ: менять номер только в этой строке ----
+def appVersionName = "2.23"
+// CI может переопределить номер, не трогая файл: ./gradlew ... -PversionName=2.24
+if (project.hasProperty('versionName')) appVersionName = project.property('versionName').toString()
+appVersionName = appVersionName.replaceFirst(/^v/, '')
+def vParts = appVersionName.tokenize('.').collect { it.replaceAll(/[^0-9].*$/, '') }
+def appVersionCode = (vParts.size() > 0 && vParts[0] ? vParts[0].toInteger() : 0) * 10000 +
+        (vParts.size() > 1 && vParts[1] ? vParts[1].toInteger() : 0) * 100 +
+        (vParts.size() > 2 && vParts[2] ? vParts[2].toInteger() : 0)
+
+// Публичный репозиторий, откуда приложение берёт обновления (см. UpdateManager).
+def releaseRepo = (findProperty('releaseRepo') ?: 'zigorminsk-debug/ZI-Office-Release').toString()
+
+// Ключ подписи лежит в signing/ (пароль и alias — в signing/ПОДПИСЬ.txt).
+def keystoreFile = rootProject.file('signing/myoffice-release.p12')
+def hasKeystore = keystoreFile.exists()
+if (!hasKeystore) {
+    // без ключа нельзя только выпускать релиз — компиляция и тесты работают
+    def asked = gradle.startParameter.taskNames.join(' ').toLowerCase()
+    if (asked.contains('release') || asked.contains('bundle')) {
+        throw new GradleException("Не найден ключ подписи: ${keystoreFile}\n" +
+                "Он нужен для сборки release — файл должен лежать в signing/myoffice-release.p12")
+    }
+    logger.warn("Ключ подписи signing/myoffice-release.p12 не найден: release-сборка будет недоступна")
+}
+
 android {
     namespace 'com.docreader.app'
     compileSdk 34
@@ -6,21 +39,23 @@ android {
         applicationId "com.docreader.app"
         minSdk 24
         targetSdk 34
-        versionCode 26
-        versionName "2.23"
+        versionCode appVersionCode
+        versionName appVersionName
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
+        buildConfigField "String", "RELEASE_REPO", "\"${releaseRepo}\""
     }
     signingConfigs {
         release {
-            storeFile file("myoffice-release.p12")
-            storePassword "MyOffice-ZI-3371412"
-            keyAlias "myoffice"
-            keyPassword "MyOffice-ZI-3371412"
+            if (hasKeystore) {
+                storeFile keystoreFile
+                storePassword "MyOffice-ZI-3371412"
+                keyAlias "myoffice"
+                keyPassword "MyOffice-ZI-3371412"
+            }
         }
     }
     buildTypes {
         release { minifyEnabled false; signingConfig signingConfigs.release }
-        debug { signingConfig signingConfigs.release }
     }
     buildFeatures { buildConfig true }
     compileOptions {

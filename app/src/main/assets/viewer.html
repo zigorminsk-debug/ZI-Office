@@ -6,8 +6,13 @@ body.night{background:#121212;color:#f5f5f4}
 #bar{display:flex;gap:6px;padding:8px;flex-wrap:wrap;background:#fff;position:sticky;top:0;z-index:2}
 body.night #bar{background:#1c1c1c}
 #doc{padding:12px;line-height:1.55;font-size:18px}
-table{border-collapse:collapse;width:100%;background:#fff}
+table{border-collapse:collapse;width:100%;background:#fff;color:#1c1917}
+body.night table{background:#1c1c1c;color:#f5f5f4}
 td,th{border:1px solid #ccc;padding:6px;font-size:13px}
+body.night td,body.night th{border-color:#444}
+th{background:#f0f0f0}
+body.night th{background:#2a2a2a}
+.note{color:#78716c;font-size:13px;padding:6px 2px}
 .slide{margin:12px 0;padding:16px;background:#fff;min-height:180px;box-shadow:0 1px 4px #0002}
 #q{flex:1;min-width:120px}
 button{padding:6px 10px}
@@ -35,7 +40,12 @@ function toggleNight(){document.body.classList.toggle('night')}
 function showBookmarks(){try{var b=JSON.parse(Android.getBookmarks()||'[]');alert('Закладки: '+(b.join(', ')||'нет'))}catch(e){}}
 function exportDocument(){
   try{
-    Android.beginSave('text/html','document.html');
+    var base='document';
+    try{
+      var n=Android.fileName(); 
+      if(n){ n=String(n).replace(/\\/g,'/'); n=n.substring(n.lastIndexOf('/')+1); n=n.replace(/\.[A-Za-z0-9]{1,5}$/,''); if(n) base=n; }
+    }catch(e){}
+    Android.beginSave('text/html', base+'.html');
     var html=document.getElementById('doc').innerHTML;
     Android.appendChunk(btoa(unescape(encodeURIComponent('<!DOCTYPE html><html><body>'+html+'</body></html>'))));
     Android.endSave();
@@ -98,15 +108,48 @@ function readWorkbook(u8){
   try{ return XLSX.read(u8.buffer.slice(u8.byteOffset,u8.byteOffset+u8.byteLength),{type:'arraybuffer',cellDates:true}); }catch(e){ last=e; }
   throw last||new Error('read');
 }
-function sheetHtml(ws){
-  if(!ws) return '<p>(пустой лист)</p>';
-  try{ return XLSX.utils.sheet_to_html(ws,{editable:false}); }catch(e){
-    var csv=''; try{ csv=XLSX.utils.sheet_to_csv(ws); }catch(e2){ return '<p>Не удалось показать лист</p>'; }
-    var rows=csv.split(/\r?\n/).map(function(line){
-      return '<tr>'+line.split(',').map(function(c){return '<td>'+c.replace(/[&<>]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x]})+'</td>';}).join('')+'</tr>';
-    }).join('');
-    return '<table>'+rows+'</table>';
+var MAX_ROWS=2000, MAX_COLS=80, MAX_CELLS=300000;
+function esc(x){return String(x==null?'':x).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+/* Границы листа считаем по РЕАЛЬНО заполненным ячейкам: в файлах из Excel
+   диапазон часто растянут на весь лист (A1:XFD1048576), и построение таблицы
+   по нему вешает просмотр. */
+function usedRange(ws){
+  var minR=1e9,minC=1e9,maxR=-1,maxC=-1,n=0;
+  for(var k in ws){
+    if(!Object.prototype.hasOwnProperty.call(ws,k)||k.charAt(0)==='!') continue;
+    var c=XLSX.utils.decode_cell(k);
+    if(c.r<0||c.c<0) continue;
+    if(c.r<minR)minR=c.r; if(c.c<minC)minC=c.c;
+    if(c.r>maxR)maxR=c.r; if(c.c>maxC)maxC=c.c;
+    if(++n>MAX_CELLS) break;
   }
+  return maxR<0?null:{r0:minR,c0:minC,r1:maxR,c1:maxC};
+}
+function cellText(c){
+  if(!c) return '';
+  if(c.w!=null) return c.w;
+  if(c.v==null) return '';
+  return String(c.v);
+}
+function sheetHtml(ws){
+  if(!ws) return '<p class="note">(пустой лист)</p>';
+  var r=usedRange(ws);
+  if(!r) return '<p class="note">(лист пуст)</p>';
+  var lastR=Math.min(r.r1, r.r0+MAX_ROWS-1), lastC=Math.min(r.c1, r.c0+MAX_COLS-1);
+  var html='<table><tbody>';
+  for(var i=r.r0;i<=lastR;i++){
+    html+='<tr>';
+    for(var j=r.c0;j<=lastC;j++){
+      html+='<td>'+esc(cellText(ws[XLSX.utils.encode_cell({r:i,c:j})]))+'</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  if(lastR<r.r1||lastC<r.c1){
+    html+='<p class="note">Показана часть данных: строки '+(r.r0+1)+'–'+(lastR+1)+
+          ', столбцы '+(r.c0+1)+'–'+(lastC+1)+' (всего '+(r.r1-r.r0+1)+' строк и '+(r.c1-r.c0+1)+' столбцов).</p>';
+  }
+  return html;
 }
 async function renderExcel(buf){
   var host=document.getElementById('doc');
@@ -126,11 +169,16 @@ async function renderExcel(buf){
       host.innerHTML='<p>В файле нет листов. Если это Numbers — экспортируйте в Excel (.xlsx).</p>';
       if(window.Android) Android.ready(); return;
     }
-    var html='';
-    wb.SheetNames.forEach(function(n){ html+='<h3>'+n+'</h3>'+sheetHtml(wb.Sheets[n]); });
-    host.innerHTML=html||'<p>(пусто)</p>';
+    var html='', shown=Math.min(wb.SheetNames.length, 20);
+    for(var si=0; si<shown; si++){
+      var name=wb.SheetNames[si];
+      html+='<h3>'+esc(name)+'</h3>'+sheetHtml(wb.Sheets[name]);
+    }
+    if(wb.SheetNames.length>shown) html+='<p class="note">Показаны первые '+shown+' листов.</p>';
+    host.innerHTML=html||'<p class="note">(пусто)</p>';
   }catch(e){
-    host.innerHTML='<p>Не удалось открыть таблицу с macOS/Excel.</p><p style="color:#78716c;font-size:14px">'+String(e)+'</p><p>Попробуйте в Excel: Файл → Сохранить как → Книга Excel (.xlsx).</p>';
+    host.innerHTML='<p>Не удалось открыть таблицу.</p><p class="note">'+esc(String(e))+'</p>'+
+      '<p class="note">Попробуйте в Excel: Файл → Сохранить как → Книга Excel (.xlsx).</p>';
     if(window.Android) Android.fail('Excel: '+e);
   }
   if(window.Android) Android.ready();

@@ -2,8 +2,8 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/paper">
     <com.google.android.material.appbar.MaterialToolbar android:id="@+id/toolbar" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@color/teal_700" android:title="Объединить PDF" android:titleTextColor="#FFFFFF" android:navigationIcon="?attr/homeAsUpIndicator"/>
     <com.google.android.material.button.MaterialButton android:id="@+id/btnAdd" android:text="Добавить PDF" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="8dp"/>
-    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+    <com.docreader.app.ElasticScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
         <LinearLayout android:id="@+id/fileList" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-    </ScrollView>
+    </com.docreader.app.ElasticScrollView>
     <com.google.android.material.button.MaterialButton android:id="@+id/btnMerge" android:text="Объединить" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_margin="8dp"/>
 </LinearLayout>

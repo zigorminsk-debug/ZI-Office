@@ -30,10 +30,12 @@ async function run(){
     var del={}; parseSpec(spec,n).forEach(function(i){del[i]=1}); var idx=[]; for(var i=0;i<n;i++) if(!del[i]) idx.push(i);
     if(!idx.length) idx=[0]; var copied=await out.copyPages(src,idx); copied.forEach(function(p){out.addPage(p)});
   } else if(cmd==='blank'){
-    var after=parseInt(spec,10); if(isNaN(after)||after<1) after=n; after=Math.min(n, after);
+    var after=parseInt(spec,10); if(isNaN(after)||after<1) after=n; after=Math.min(n, Math.max(1, after));
     var head=[]; for(var i=0;i<after;i++) head.push(i);
     var c1=await out.copyPages(src,head); c1.forEach(function(p){out.addPage(p)});
-    var ref=await src.getPage(after); var sz=ref.getSize(); out.addPage([sz.width, sz.height]);
+    // пустая страница берёт размер страницы, после которой вставляется;
+    // для вставки в конец (after = n) образец — последняя страница
+    var ref=src.getPage(after<n?after:Math.max(0,n-1)); var sz=ref.getSize(); out.addPage([sz.width, sz.height]);
     var rest=[]; for(var i=after;i<n;i++) rest.push(i);
     if(rest.length){ var c2=await out.copyPages(src,rest); c2.forEach(function(p){out.addPage(p)}); }
   } else if(cmd==='numbers'){

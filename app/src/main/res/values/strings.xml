@@ -5,4 +5,6 @@
     <string name="developer_phone">+375293371412</string>
     <string name="developer_phone_pretty">+375 29 337 14 12</string>
     <string name="unsupported">Этот формат не поддерживается</string>
+    <string name="developer_name_with_phone">Позвонить: Zakharevich Igor · +375 29 337 14 12</string>
+    <string name="about_title">О программе</string>
 </resources>
