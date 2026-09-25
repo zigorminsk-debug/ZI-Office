@@ -77,9 +77,11 @@ public class ViewerActivity extends AppCompatActivity {
                 if (inStream == null) throw new Exception("null");
                 byte[] b = new byte[8192]; int n; while ((n = inStream.read(b)) > 0) fo.write(b, 0, n);
             } catch (Exception e) {
-                CrashGuard.log(this, "чтение содержимого " + source, e);
-                Toast.makeText(this, "Не удалось открыть файл. Доступ мог быть отозван — откройте его заново.", Toast.LENGTH_LONG).show();
-                finish(); return;
+                openProblem("Не удалось прочитать файл",
+                        "Файл: " + displayName + "\nСсылка: " + source + "\n\nОшибка: " + e
+                                + "\n\nЧастая причина — доступ к файлу отозван другим приложением. "
+                                + "Откройте файл заново кнопкой «Открыть».");
+                return;
             }
             if (cacheFile.length() == 0) { Toast.makeText(this, "Файл пуст", Toast.LENGTH_LONG).show(); finish(); return; }
             if (cacheFile.length() > 0 && !cacheFile.canRead()) { Toast.makeText(this, "Файл недоступен", Toast.LENGTH_LONG).show(); finish(); return; }
@@ -112,6 +114,23 @@ public class ViewerActivity extends AppCompatActivity {
             }
         } catch (Throwable ignored) { }
         return null;
+    }
+
+    /** Показывает причину и предлагает отправить отчёт — вместо молчаливого закрытия. */
+    private void openProblem(String title, String details) {
+        CrashGuard.log(this, title + ": " + details);
+        try {
+            new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setMessage(details)
+                    .setPositiveButton("Отправить отчёт", (d, w) -> startActivity(new Intent(this, CrashActivity.class)))
+                    .setNegativeButton("Закрыть", (d, w) -> finish())
+                    .setCancelable(false)
+                    .show();
+        } catch (Throwable t) {
+            Toast.makeText(this, title, Toast.LENGTH_LONG).show();
+            finish();
+        }
     }
 
     private void setupWeb(WebView w) {

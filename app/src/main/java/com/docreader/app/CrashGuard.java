@@ -40,6 +40,9 @@ final class CrashGuard {
         });
     }
 
+    /** Некритичная ошибка без стека (сами описываем подробности в where). */
+    static void log(Context ctx, String where) { log(ctx, where, null); }
+
     /** Некритичная ошибка: сохраняем текст, приложение продолжает работать. */
     static void log(Context ctx, String where, Throwable error) {
         try {

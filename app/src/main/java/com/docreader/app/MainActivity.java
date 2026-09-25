@@ -7,6 +7,8 @@ import com.google.android.material.appbar.MaterialToolbar;
 public class MainActivity extends AppCompatActivity {
     private LinearLayout recentList; private View emptyBox; private ActivityResultLauncher<Intent> openDoc;
     private ActivityResultLauncher<String> askNotifications;
+    /** Файлы больше этого размера не копируем — открываем по исходной ссылке. */
+    private static final long MAX_LOCAL_COPY = 64L * 1024 * 1024;
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b); setContentView(R.layout.activity_main);
         MaterialToolbar tb = findViewById(R.id.toolbar); setSupportActionBar(tb);
@@ -27,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
         handleIntent(getIntent());
         askAboutCrash();
         askNotifications();
+        new Thread(this::cleanupInbox).start();   // старые копии не нужны
     }
 
     /** Файл могут прислать по-разному: «Открыть с помощью» (VIEW) или «Поделиться» (SEND). */
@@ -109,50 +112,62 @@ public class MainActivity extends AppCompatActivity {
             openUriChecked(uri);
         } catch (Throwable t) {
             CrashGuard.log(this, "открытие файла " + uri, t);
-            Toast.makeText(this, "Не удалось открыть файл", Toast.LENGTH_LONG).show();
+            openProblem("Не удалось открыть файл", "Файл: " + uri + "\n\nОшибка: " + t);
         }
     }
 
+    /**
+     * Открытие файла из другого приложения (мессенджер, файловый менеджер,
+     * «Поделиться»).
+     *
+     * Доступ к такому файлу даётся временно и может пропасть, а ссылку file://
+     * нельзя передавать между окнами (Android 11+ закрывает за это приложение).
+     * Поэтому сразу делаем свою копию в папке приложения и дальше работаем
+     * только с ней — файл открывается всегда, в том числе из «недавних».
+     */
     private void openUriChecked(Uri uri) {
         if (uri == null) return;
-        // file:// нельзя передавать между окнами — Android 11+ роняет приложение
-        // (FileUriExposedException). Копируем такой файл в свою папку и работаем
-        // с безопасной ссылкой FileProvider.
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT);
-        if ("file".equals(scheme)) {
-            Uri safe = copyLocalToCache(uri);
-            if (safe == null) {
-                Toast.makeText(this, "Нет доступа к файлу — выберите его кнопкой «Открыть»", Toast.LENGTH_LONG).show();
-                return;
-            }
-            openUriChecked(safe);
+        boolean local = "file".equals(scheme);
+        if (!local && !"content".equals(scheme) && !"android.resource".equals(scheme)) {
+            openProblem("Файл не открывается", "Ссылка вида «" + scheme + "» не поддерживается.\n\nОткройте файл кнопкой «Открыть».");
             return;
         }
-        if (!"content".equals(scheme) && !"android.resource".equals(scheme)) {
-            Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show();
+        if (!local) {
+            try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+        }
+
+        String name = local ? lastSegment(uri) : FileKind.name(this, uri);
+        String mime = local ? null : FileKind.mime(this, uri);
+        String kind = FileKind.fromNameAndMime(name, mime);
+
+        // своя копия: переживает отзыв доступа и нужна для просмотра без задержек
+        java.io.File copy = copyToInbox(uri, name);
+        if (local && copy == null) {
+            openProblem("Нет доступа к файлу",
+                    "Файл: " + name + "\n\nAndroid не даёт читать файлы по прямой ссылке file://. "
+                            + "Откройте его кнопкой «Открыть» — так доступ сохранится.");
             return;
         }
-        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
-        String name = FileKind.name(this, uri);
-        String kind = FileKind.fromNameAndMime(name, FileKind.mime(this, uri));
-        java.io.File copy = null;
+        if (copy != null && FileKind.UNKNOWN.equals(kind)) kind = FileKind.sniff(copy);
+
         if (FileKind.UNKNOWN.equals(kind)) {
-            // незнакомый тип — определяем по содержимому (копия пригодится и просмотрщику)
-            copy = copyToCache(uri, 40 * 1024 * 1024L);
-            if (copy != null) {
-                kind = FileKind.sniff(copy);
-                if (FileKind.UNKNOWN.equals(kind)) { try { copy.delete(); } catch (Exception ignored) { } copy = null; }
-            }
-        }
-        if (FileKind.UNKNOWN.equals(kind)) {
-            Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show();
+            if (copy != null) { try { copy.delete(); } catch (Exception ignored) { } }
+            openProblem("Формат не поддерживается",
+                    "Файл: " + name + "\nТип: " + (mime == null ? "неизвестен" : mime)
+                            + "\n\nПоддерживаются PDF, Word, Excel, PowerPoint, RTF, TXT и CSV. "
+                            + "Файлы Numbers/WPS сохраните как .xlsx или .docx, с файлов с паролем снимите пароль.");
             return;
         }
+        if (FileKind.ext(name).isEmpty() && !"txt".equals(kind)) name = name + "." + kind;
+
         Uri pass = uri;
         if (copy != null) {
             try { pass = androidx.core.content.FileProvider.getUriForFile(this, "com.docreader.app.files", copy); }
-            catch (Exception e) { copy = null; }
+            catch (Throwable t) { CrashGuard.log(this, "FileProvider для " + copy, t); }
         }
+        // запись в журнал: по отчёту видно, что именно открывали и как определился тип
+        CrashGuard.log(this, "открытие: " + name + " | mime=" + mime + " | тип=" + kind + " | своя копия=" + (copy != null));
         RecentStore.add(this, pass, name, kind);
         Intent i = new Intent(this, ViewerActivity.class);
         i.setData(pass); i.putExtra("name", name); i.putExtra("kind", kind);
@@ -160,41 +175,71 @@ public class MainActivity extends AppCompatActivity {
         startActivity(i);
     }
 
-    /** Копирует содержимое в кэш приложения, возвращает безопасную ссылку. */
-    private Uri copyLocalToCache(Uri fileUri) {
+    /** Последний сегмент ссылки как имя файла. */
+    private static String lastSegment(Uri uri) {
+        String seg = uri.getLastPathSegment();
+        return seg == null || seg.isEmpty() ? "file" : seg;
+    }
+
+    /** Копирует файл в свою папку (до 64 МБ). Возвращает файл или null. */
+    private java.io.File copyToInbox(Uri uri, String name) {
+        java.io.File dst = null;
         try {
-            String path = fileUri.getPath();
-            if (path == null) return null;
-            java.io.File src = new java.io.File(path);
-            if (!src.exists() || !src.isFile() || !src.canRead()) return null;
-            java.io.File dst = new java.io.File(getCacheDir(), "in-" + System.currentTimeMillis() + "-" + FileKind.safeFileName(src.getName()));
-            try (java.io.InputStream in = new java.io.FileInputStream(src); java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
-                byte[] b = new byte[65536]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            java.io.File dir = new java.io.File(getFilesDir(), "inbox");
+            if (!dir.exists() && !dir.mkdirs()) return null;
+            dst = new java.io.File(dir, System.currentTimeMillis() + "-" + FileKind.safeFileName(name));
+            java.io.InputStream in = openStream(uri);
+            if (in == null) return null;
+            try (java.io.InputStream input = in; java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+                byte[] b = new byte[65536]; long total = 0; int n;
+                while ((n = input.read(b)) > 0) {
+                    total += n;
+                    if (total > MAX_LOCAL_COPY) { dst.delete(); return null; } // очень большой — открываем по ссылке
+                    out.write(b, 0, n);
+                }
             }
-            return androidx.core.content.FileProvider.getUriForFile(this, "com.docreader.app.files", dst);
+            if (dst.length() == 0) { dst.delete(); return null; }
+            return dst;
         } catch (Throwable t) {
-            CrashGuard.log(this, "копирование file://-файла", t);
+            CrashGuard.log(this, "копирование файла " + name + " (" + uri + ")", t);
+            if (dst != null) { try { dst.delete(); } catch (Exception ignored) { } }
             return null;
         }
     }
 
-    /** Копия файла из content:// в кэш (только если он не больше limit). */
-    private java.io.File copyToCache(Uri uri, long limit) {
-        java.io.File dst = new java.io.File(getCacheDir(), "in-" + System.currentTimeMillis());
-        try (java.io.InputStream in = getContentResolver().openInputStream(uri);
-             java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
-            if (in == null) { dst.delete(); return null; }
-            byte[] b = new byte[65536]; long total = 0; int n;
-            while ((n = in.read(b)) > 0) {
-                total += n;
-                if (total > limit) { dst.delete(); return null; } // слишком большой — не копируем
-                out.write(b, 0, n);
-            }
-            return dst.length() > 0 ? dst : null;
+    private java.io.InputStream openStream(Uri uri) throws Exception {
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            String path = uri.getPath();
+            if (path == null) return null;
+            java.io.File f = new java.io.File(path);
+            if (!f.exists() || !f.isFile() || !f.canRead()) return null;
+            return new java.io.FileInputStream(f);
+        }
+        return getContentResolver().openInputStream(uri);
+    }
+
+    /** Копии в «inbox» не должны копиться бесконечно: держим 25 последних. */
+    private void cleanupInbox() {
+        try {
+            java.io.File[] files = new java.io.File(getFilesDir(), "inbox").listFiles();
+            if (files == null || files.length <= 25) return;
+            java.util.Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            for (int i = 25; i < files.length; i++) files[i].delete();
+        } catch (Throwable ignored) { }
+    }
+
+    /** Понятное объяснение вместо «молча не открылось» + возможность прислать отчёт. */
+    private void openProblem(String title, String details) {
+        CrashGuard.log(this, title + ": " + details);
+        try {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setMessage(details)
+                    .setPositiveButton("Отправить отчёт", (d, w) -> startActivity(new Intent(this, CrashActivity.class)))
+                    .setNegativeButton("OK", null)
+                    .show();
         } catch (Throwable t) {
-            CrashGuard.log(this, "чтение файла " + uri, t);
-            try { dst.delete(); } catch (Exception ignored) { }
-            return null;
+            Toast.makeText(this, title, Toast.LENGTH_LONG).show();
         }
     }
 
