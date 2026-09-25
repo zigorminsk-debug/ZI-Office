@@ -50,7 +50,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class UpdateManager {
     /** Публичный репозиторий, куда GitHub Actions публикует APK-релизы. */
     static final String RELEASE_REPO = BuildConfig.RELEASE_REPO;
-    private static final String LATEST_URL = "https://api.github.com/repos/" + RELEASE_REPO + "/releases/latest";
+    /**
+     * Репозиторий с релизами, когда он закрытый: тогда приложение читает его
+     * по токену из настроек (экран «Настройка обновлений»). Так автообновление
+     * работает без публичного репозитория и без секретов в GitHub.
+     */
+    static final String PRIVATE_REPO = "zigorminsk-debug/ZI-Office";
     private static final String PREFS = "update";
     private static final long CHECK_INTERVAL_MS = 6L * 3600 * 1000L; // раз в 6 часов
     static final int JOB_ID = 33714;
@@ -71,6 +76,44 @@ final class UpdateManager {
     private static SharedPreferences prefs(Context ctx) { return ctx.getSharedPreferences(PREFS, 0); }
 
     // ---------------------------------------------------------------- настройки
+
+    /** Токен доступа к закрытому репозиторию (пусто — публичный канал). */
+    static String token(Context ctx) {
+        try { String t = prefs(ctx).getString("token", ""); return t == null ? "" : t.trim(); }
+        catch (Throwable t) { return ""; }
+    }
+
+    /** Сохранить или очистить токен доступа. */
+    static void setToken(Context ctx, String value) {
+        String t = value == null ? "" : value.trim();
+        // пользователь может вставить ссылку на выпуск токена — берём только сам токен
+        if (t.contains("github_pat_") || t.contains("ghp_")) {
+            StringBuilder sb = new StringBuilder();
+            for (String part : t.split("[^A-Za-z0-9_]+")) {
+                if (part.startsWith("github_pat_") || part.startsWith("ghp_")) { sb.append(part); break; }
+            }
+            if (sb.length() > 0) t = sb.toString();
+        }
+        prefs(ctx).edit().putString("token", t).apply();
+    }
+
+    static boolean hasToken(Context ctx) { return !token(ctx).isEmpty(); }
+
+    /** Откуда сейчас берутся обновления — для экранов настройки и «О программе». */
+    static String activeRepo(Context ctx) { return hasToken(ctx) ? PRIVATE_REPO : RELEASE_REPO; }
+
+    private static String latestUrl(Context ctx) {
+        return "https://api.github.com/repos/" + activeRepo(ctx) + "/releases/latest";
+    }
+
+    /** Заголовок авторизации для закрытого репозитория (иначе запрос анонимный). */
+    private static void applyAuth(HttpURLConnection c, Context ctx) {
+        String t = token(ctx);
+        if (!t.isEmpty()) {
+            c.setRequestProperty("Authorization", "Bearer " + t);
+            c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+        }
+    }
 
     /** Автообновление включено? По умолчанию — да. */
     static boolean isAutoEnabled(Context ctx) { return prefs(ctx).getBoolean("auto", true); }
@@ -146,7 +189,12 @@ final class UpdateManager {
                 c.setConnectTimeout(15000);
                 c.setReadTimeout(60000);
                 c.setRequestProperty("User-Agent", "ZI-Office-Update");
-                if (c.getResponseCode() != 200) return null;
+                c.setRequestProperty("Accept", "application/octet-stream");
+                applyAuth(c, ctx);
+                if (c.getResponseCode() != 200) {
+                    CrashGuard.log(ctx, "загрузка обновления " + ver + ": ответ " + c.getResponseCode());
+                    return null;
+                }
                 long total = c.getContentLengthLong();
                 if (total > MAX_APK_BYTES) return null;
                 int lastPct = -1;
@@ -274,6 +322,8 @@ final class UpdateManager {
          * @param apkUrl  ссылка на APK обновления или null
          */
         void onResult(String message, String version, String apkUrl);
+        /** Обновления неоткуда брать: экран предложит настроить канал. */
+        default void onNeedsSetup(String message) { onResult(message, null, null); }
     }
 
     private static void check(final Activity act, final boolean manual, final CheckListener listener) {
@@ -289,8 +339,17 @@ final class UpdateManager {
             final String local = BuildConfig.VERSION_NAME;
 
             if (r.version == null || r.apkUrl == null || !isSafeHost(r.apkUrl)) {
-                if (listener != null) main().post(() -> listener.onResult(r.message, null, null));
-                else if (manual) toast(act, r.message);
+                if (listener != null) {
+                    main().post(() -> {
+                        if (r.needsSetup) listener.onNeedsSetup(r.message);
+                        else listener.onResult(r.message, null, null);
+                    });
+                } else if (manual) {
+                    main().post(() -> {
+                        if (r.needsSetup) setupDialog(act, r.message);
+                        else Toast.makeText(act, r.message, Toast.LENGTH_LONG).show();
+                    });
+                }
                 return;
             }
             if (!isNewer(r.version, local)) {
@@ -339,6 +398,8 @@ final class UpdateManager {
     /** Результат обращения к GitHub. */
     private static final class Result {
         String version, apkUrl, message = "Не удалось проверить обновления";
+        /** Обновления неоткуда брать — нужно один раз настроить канал. */
+        boolean needsSetup;
     }
 
     /** Запрос последнего релиза (блокирующий, вызывать в фоновом потоке). */
@@ -349,11 +410,12 @@ final class UpdateManager {
         Throwable failure = null;
         HttpURLConnection c = null;
         try {
-            c = (HttpURLConnection) new URL(LATEST_URL).openConnection();
+            c = (HttpURLConnection) new URL(latestUrl(ctx)).openConnection();
             c.setConnectTimeout(10000);
             c.setReadTimeout(15000);
             c.setRequestProperty("User-Agent", "ZI-Office-Update");
             c.setRequestProperty("Accept", "application/vnd.github+json");
+            applyAuth(c, ctx);
             httpCode = c.getResponseCode();
             answered = true;
             if (httpCode == 200) {
@@ -386,18 +448,44 @@ final class UpdateManager {
         // отметку времени ставим, когда сервер ответил: иначе при отсутствии
         // обновлений GitHub дёргался бы при каждом запуске
         if (answered && ctx != null) prefs(ctx).edit().putLong("last_check", System.currentTimeMillis()).apply();
-        if (r.version == null || r.apkUrl == null) r.message = explain(httpCode, failure);
+        if (r.version == null || r.apkUrl == null) {
+            r.message = explain(ctx, httpCode, failure);
+            r.needsSetup = httpCode == 401 || (httpCode == 404 && !hasToken(ctx));
+        }
         return r;
     }
 
     /** Почему не удалось проверить обновления — человеческим языком. */
-    private static String explain(int httpCode, Throwable failure) {
-        if (httpCode == 404) return "Репозиторий обновлений не найден: " + RELEASE_REPO;
-        if (httpCode == 403 || httpCode == 429) return "GitHub ограничил запросы, попробуйте позже";
+    private static String explain(Context ctx, int httpCode, Throwable failure) {
+        boolean byToken = hasToken(ctx);
+        if (httpCode == 401) return "Токен доступа не подошёл или истёк — вставьте новый на экране «Настройка обновлений»";
+        if (httpCode == 403) return "GitHub ограничил запросы, попробуйте позже";
+        if (httpCode == 404 && byToken) return "Нет доступа к релизам " + PRIVATE_REPO + " — проверьте, что токену разрешён этот репозиторий";
+        if (httpCode == 404) return "Автообновление не настроено: релизы лежат в закрытом репозитории";
+        if (httpCode == 429) return "GitHub ограничил запросы, попробуйте позже";
         if (httpCode >= 500) return "Ошибка на стороне GitHub (" + httpCode + ")";
         if (failure != null) return "Не удалось проверить обновления. Проверьте интернет.";
         if (httpCode != 0) return "В репозитории обновлений ещё нет релизов";
         return "Не удалось проверить обновления";
+    }
+
+    /** Объясняет, что обновления нужно один раз настроить, и ведёт на экран настройки. */
+    private static void setupDialog(final Activity act, String message) {
+        if (act.isFinishing() || act.isDestroyed()) return;
+        try {
+            new AlertDialog.Builder(act)
+                    .setTitle("Автообновление не настроено")
+                    .setMessage(message + "\n\nНастройка занимает минуту и делается один раз: "
+                            + "приложение подскажет шаги на экране «Настройка обновлений».")
+                    .setPositiveButton("Настроить", (d, w) -> {
+                        try { act.startActivity(new Intent(act, UpdateSetupActivity.class)); }
+                        catch (Throwable ignored) { }
+                    })
+                    .setNegativeButton("Позже", null)
+                    .show();
+        } catch (Throwable t) {
+            Toast.makeText(act, message, Toast.LENGTH_LONG).show();
+        }
     }
 
     private static void toast(final Activity act, final String msg) {
@@ -436,6 +524,8 @@ final class UpdateManager {
                 c.setConnectTimeout(15000);
                 c.setReadTimeout(60000);
                 c.setRequestProperty("User-Agent", "ZI-Office-Update");
+                c.setRequestProperty("Accept", "application/octet-stream");
+                applyAuth(c, act);
                 int code = c.getResponseCode();
                 if (code != 200) {
                     main().post(() -> finishDialog(act, dlg, apk, "Не удалось скачать: HTTP " + code));

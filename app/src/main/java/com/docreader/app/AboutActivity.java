@@ -34,6 +34,14 @@ public class AboutActivity extends AppCompatActivity {
 
     /** Что показывать в блоке автообновления: готовый файл, разрешение, состояние. */
     private void refreshAutoSection() {
+        try {
+            TextView hint = findViewById(R.id.autoHint);
+            boolean byToken = UpdateManager.hasToken(this);
+            hint.setText("Проверка раз в 6 часов, даже когда приложение закрыто: новая версия скачается сама, "
+                    + "останется подтвердить установку.\nОбновления берутся из "
+                    + (byToken ? "закрытого репозитория по токену" : "публичного репозитория " + UpdateManager.RELEASE_REPO)
+                    + ".");
+        } catch (Throwable ignored) { }
         boolean auto = UpdateManager.isAutoEnabled(this);
         autoSwitch.setChecked(auto);
         String ver = UpdateManager.downloadedVersion(this);
@@ -89,8 +97,9 @@ public class AboutActivity extends AppCompatActivity {
                 .setText("Версия " + BuildConfig.VERSION_NAME + " · сборка " + BuildConfig.VERSION_CODE);
         ((TextView) findViewById(R.id.footer))
                 .setText("ZI Office · " + getString(R.string.developer_name) + "\nСборка приложения — GitHub Actions, APK: "
-                        + UpdateManager.RELEASE_REPO);
+                        + UpdateManager.activeRepo(this));
 
+        findViewById(R.id.btnSetupUpdates).setOnClickListener(v -> openSetup());
         btnUpdate.setOnClickListener(v -> checkUpdates());
         findViewById(R.id.btnCall).setOnClickListener(v -> call());
         setupFaq();
@@ -118,8 +127,18 @@ public class AboutActivity extends AppCompatActivity {
                 btnUpdate.setText("Скачать и установить " + version);
                 btnUpdate.setOnClickListener(v -> download(version, apkUrl));
             }
+            @Override public void onNeedsSetup(String message) {
+                if (isFinishing() || isDestroyed()) return;
+                progress.setVisibility(View.GONE);
+                status.setText(message);
+                btnUpdate.setEnabled(true);
+                btnUpdate.setText("Настроить обновления");
+                btnUpdate.setOnClickListener(v -> openSetup());
+            }
         });
     }
+
+    private void openSetup() { startActivity(new Intent(this, UpdateSetupActivity.class)); }
 
     private void download(final String version, final String apkUrl) {
         btnUpdate.setEnabled(false);

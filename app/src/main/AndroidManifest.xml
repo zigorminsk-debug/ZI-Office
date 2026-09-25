@@ -79,6 +79,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".CrashActivity" android:exported="false"/>
+        <!-- Одноразовая настройка: откуда приложение берёт обновления -->
+        <activity android:name=".UpdateSetupActivity" android:exported="false"/>
         <!-- Открывается нажатием на уведомление об обновлении: сразу установщик -->
         <activity android:name=".UpdateInstallActivity" android:exported="false"
                   android:excludeFromRecents="true" android:noHistory="true"
