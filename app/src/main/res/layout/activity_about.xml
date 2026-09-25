@@ -79,6 +79,36 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"/>
 
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/autoSwitch"
+                android:text="Обновляться автоматически"
+                android:textColor="@color/ink"
+                android:textSize="15sp"
+                android:paddingTop="10dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
+            <TextView
+                android:id="@+id/autoHint"
+                style="@style/FaqAnswer"
+                android:text="Проверка раз в 6 часов, даже когда приложение закрыто: новая версия скачается сама, останется подтвердить установку."/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallReady"
+                android:text="Установить скачанное обновление"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInstallPerm"
+                android:text="Разрешить установку обновлений"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:visibility="gone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"/>
+
             <ProgressBar
                 android:id="@+id/updateProgress"
                 style="?android:attr/progressBarStyleHorizontal"

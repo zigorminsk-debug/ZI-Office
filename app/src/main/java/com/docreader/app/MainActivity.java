@@ -6,11 +6,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
 public class MainActivity extends AppCompatActivity {
     private LinearLayout recentList; private View emptyBox; private ActivityResultLauncher<Intent> openDoc;
+    private ActivityResultLauncher<String> askNotifications;
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b); setContentView(R.layout.activity_main);
         MaterialToolbar tb = findViewById(R.id.toolbar); setSupportActionBar(tb);
         recentList = findViewById(R.id.recentList); emptyBox = findViewById(R.id.emptyBox);
         openDoc = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), res -> { if (res.getData() != null && res.getData().getData() != null) openUri(res.getData().getData()); });
+        askNotifications = registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> { if (granted) UpdateManager.schedule(this); });
         findViewById(R.id.btnOpen).setOnClickListener(v -> { Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.addCategory(Intent.CATEGORY_OPENABLE); i.setType("*/*"); i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.ms-excel","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.ms-excel.sheet.macroEnabled.12","application/vnd.ms-excel.sheet.binary.macroEnabled.12","application/vnd.oasis.opendocument.spreadsheet","application/zip","application/vnd.ms-powerpoint","application/vnd.openxmlformats-officedocument.presentationml.presentation","text/plain","text/csv","*/*"}); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION); openDoc.launch(i); });
         findViewById(R.id.btnNewWord).setOnClickListener(v -> { Intent i = new Intent(this, ViewerActivity.class); i.putExtra("isNew", true); i.putExtra("name", "Документ.docx"); i.putExtra("kind", "docx"); startActivity(i); });
         findViewById(R.id.btnNewExcel).setOnClickListener(v -> { Intent i = new Intent(this, ViewerActivity.class); i.putExtra("isNew", true); i.putExtra("name", "Таблица.xlsx"); i.putExtra("kind", "xlsx"); startActivity(i); });
@@ -24,6 +26,7 @@ public class MainActivity extends AppCompatActivity {
         tb.setOnLongClickListener(v -> { openAbout(); return true; });
         handleIntent(getIntent());
         askAboutCrash();
+        askNotifications();
     }
 
     /** Файл могут прислать по-разному: «Открыть с помощью» (VIEW) или «Поделиться» (SEND). */
@@ -81,7 +84,26 @@ public class MainActivity extends AppCompatActivity {
         setIntent(intent);
         handleIntent(intent);
     }
-    @Override protected void onResume() { super.onResume(); fillRecent(); UpdateManager.checkIfDue(this); }
+    @Override protected void onResume() { super.onResume(); fillRecent(); UpdateManager.onForeground(this); }
+
+    /**
+     * Android 13+ требует разрешение на уведомления — без него приложение не
+     * сможет сообщить, что обновление скачалось в фоне.
+     */
+    private void askNotifications() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        if (!UpdateManager.isAutoEnabled(this)) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        final android.content.SharedPreferences p = getSharedPreferences("update", 0);
+        if (p.getBoolean("asked_notifications", false)) return;
+        p.edit().putBoolean("asked_notifications", true).apply();
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Уведомления об обновлениях")
+                .setMessage("Разрешить уведомления? Приложение сообщит, когда новая версия скачается в фоне — останется подтвердить установку.")
+                .setPositiveButton("Разрешить", (d, w) -> { try { askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS); } catch (Throwable ignored) { } })
+                .setNegativeButton("Не сейчас", null)
+                .show();
+    }
     private void openUri(Uri uri) {
         try {
             openUriChecked(uri);

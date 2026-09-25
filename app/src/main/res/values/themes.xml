@@ -30,4 +30,14 @@
         <item name="android:navigationBarColor">@color/paper</item>
         <item name="android:windowBackground">@color/paper</item>
     </style>
+
+    <!-- Экран, который сразу открывает установщик и закрывается -->
+    <style name="Theme.ZIOffice.Transparent" parent="Theme.ZIOffice">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

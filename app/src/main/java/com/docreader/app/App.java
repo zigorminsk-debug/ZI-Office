@@ -6,5 +6,6 @@ public class App extends Application {
         CrashGuard.install(this);      // отчёт о сбое пользователь сможет отправить
         ThemePrefs.apply(this);
         CloudSession.restore(this);
+        UpdateManager.schedule(this);   // фоновая проверка обновлений (раз в 6 часов)
     }
 }

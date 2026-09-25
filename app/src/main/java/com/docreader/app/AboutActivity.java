@@ -7,9 +7,11 @@ import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 
 /**
  * Экран «О программе»: версия, кнопка обновления, контакты и частые вопросы.
@@ -22,9 +24,41 @@ public class AboutActivity extends AppCompatActivity {
             R.id.a1, R.id.a2, R.id.a3, R.id.a4, R.id.a5, R.id.a6, R.id.a7, R.id.a8
     };
 
-    private MaterialButton btnUpdate;
+    private MaterialButton btnUpdate, btnInstallReady, btnInstallPerm;
     private ProgressBar progress;
-    private TextView status;
+    private TextView status, autoHint;
+    private SwitchMaterial autoSwitch;
+    private androidx.activity.result.ActivityResultLauncher<String> askNotifications;
+
+    @Override protected void onResume() { super.onResume(); refreshAutoSection(); }
+
+    /** Что показывать в блоке автообновления: готовый файл, разрешение, состояние. */
+    private void refreshAutoSection() {
+        boolean auto = UpdateManager.isAutoEnabled(this);
+        autoSwitch.setChecked(auto);
+        String ver = UpdateManager.downloadedVersion(this);
+        boolean ready = ver != null && UpdateManager.downloadedFile(this) != null && UpdateManager.isNewer(ver, BuildConfig.VERSION_NAME);
+        btnInstallReady.setVisibility(ready ? View.VISIBLE : View.GONE);
+        if (ready) btnInstallReady.setText("Установить обновление " + ver);
+        boolean allowed = ApkInstaller.allowed(this);
+        btnInstallPerm.setVisibility(allowed ? View.GONE : View.VISIBLE);
+        if (!auto) {
+            autoHint.setText("Автообновление выключено: проверяйте обновления кнопкой выше.");
+        } else if (!allowed) {
+            autoHint.setText("Автообновление включено. Осталось разрешить установку обновлений — нажмите кнопку ниже (спросит один раз).");
+        } else if (ready) {
+            autoHint.setText("Версия " + ver + " уже скачана и ждёт установки.");
+        } else {
+            autoHint.setText("Проверка раз в 6 часов, даже когда приложение закрыто: новая версия скачается сама, останется подтвердить установку.");
+        }
+    }
+
+    /** Android 13+: без разрешения на уведомления не сообщить о готовом обновлении. */
+    private void requestNotificationsIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        try { askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS); } catch (Throwable ignored) { }
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -36,6 +70,20 @@ public class AboutActivity extends AppCompatActivity {
         btnUpdate = findViewById(R.id.btnUpdate);
         progress = findViewById(R.id.updateProgress);
         status = findViewById(R.id.updateStatus);
+        autoSwitch = findViewById(R.id.autoSwitch);
+        autoHint = findViewById(R.id.autoHint);
+        btnInstallReady = findViewById(R.id.btnInstallReady);
+        btnInstallPerm = findViewById(R.id.btnInstallPerm);
+        askNotifications = registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> { if (granted) UpdateManager.schedule(this); });
+
+        autoSwitch.setChecked(UpdateManager.isAutoEnabled(this));
+        autoSwitch.setOnCheckedChangeListener((v, checked) -> {
+            UpdateManager.setAutoEnabled(this, checked);
+            if (checked) requestNotificationsIfNeeded();
+            refreshAutoSection();
+        });
+        btnInstallReady.setOnClickListener(v -> UpdateManager.installDownloaded(this));
+        btnInstallPerm.setOnClickListener(v -> ApkInstaller.openSettings(this));
 
         ((TextView) findViewById(R.id.versionText))
                 .setText("Версия " + BuildConfig.VERSION_NAME + " · сборка " + BuildConfig.VERSION_CODE);
