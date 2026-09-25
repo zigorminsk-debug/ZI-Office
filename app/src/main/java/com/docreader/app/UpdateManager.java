@@ -65,6 +65,12 @@ final class UpdateManager {
     private static final long MAX_APK_BYTES = 200L * 1024 * 1024;
 
     private static volatile Handler mainHandler;
+    /**
+     * Адрес файла обновления через API GitHub. Для закрытого репозитория
+     * обычная ссылка «releases/download/...» может не отдать файл — тогда
+     * приложение берёт APK этим адресом (см. {@link #openApk}).
+     */
+    private static volatile String apiAssetUrl;
     private static final AtomicBoolean busy = new AtomicBoolean(false);
 
     private static Handler main() {
@@ -160,6 +166,7 @@ final class UpdateManager {
     static void backgroundCheck(Context ctx) {
         if (!isAutoEnabled(ctx)) return;
         Result r = fetch(ctx);
+        apiAssetUrl = (r.apkApiUrl != null && isSafeHost(r.apkApiUrl)) ? r.apkApiUrl : null;
         if (r.version == null || r.apkUrl == null || !isSafeHost(r.apkUrl)) return;
         if (!isNewer(r.version, BuildConfig.VERSION_NAME)) return;
         if (isReady(ctx, r.version)) { notifyReady(ctx, r.version); return; } // уже скачано раньше
@@ -185,16 +192,8 @@ final class UpdateManager {
                 try { lock.acquire(10 * 60 * 1000L); } catch (Throwable ignored) { }
             }
             try {
-                c = (HttpURLConnection) new URL(url).openConnection();
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(60000);
-                c.setRequestProperty("User-Agent", "ZI-Office-Update");
-                c.setRequestProperty("Accept", "application/octet-stream");
-                applyAuth(c, ctx);
-                if (c.getResponseCode() != 200) {
-                    CrashGuard.log(ctx, "загрузка обновления " + ver + ": ответ " + c.getResponseCode());
-                    return null;
-                }
+                c = openApk(ctx, url);
+                if (c == null) return null;
                 long total = c.getContentLengthLong();
                 if (total > MAX_APK_BYTES) return null;
                 int lastPct = -1;
@@ -336,6 +335,7 @@ final class UpdateManager {
         new Thread(() -> {
             final Result r = fetch(act);
             busy.set(false);
+            apiAssetUrl = (r.apkApiUrl != null && isSafeHost(r.apkApiUrl)) ? r.apkApiUrl : null;
             final String local = BuildConfig.VERSION_NAME;
 
             if (r.version == null || r.apkUrl == null || !isSafeHost(r.apkUrl)) {
@@ -397,7 +397,7 @@ final class UpdateManager {
 
     /** Результат обращения к GitHub. */
     private static final class Result {
-        String version, apkUrl, message = "Не удалось проверить обновления";
+        String version, apkUrl, apkApiUrl, message = "Не удалось проверить обновления";
         /** Обновления неоткуда брать — нужно один раз настроить канал. */
         boolean needsSetup;
     }
@@ -435,6 +435,7 @@ final class UpdateManager {
                         String fn = a.optString("name");
                         if (fn != null && fn.toLowerCase(Locale.ROOT).endsWith(".apk")) {
                             r.apkUrl = a.optString("browser_download_url");
+                            r.apkApiUrl = a.optString("url");
                             break;
                         }
                     }
@@ -495,6 +496,49 @@ final class UpdateManager {
     // ------------------------------------------------------------ скачивание
 
     /** Скачивание с диалогом прогресса; по завершении предлагаем установить. */
+    /** Подключение к адресу APK: заголовки, таймауты, токен (для закрытого репозитория). */
+    private static HttpURLConnection connect(Context ctx, String url) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(60000);
+        c.setInstanceFollowRedirects(true);
+        c.setRequestProperty("User-Agent", "ZI-Office-Update");
+        c.setRequestProperty("Accept", "application/octet-stream");
+        applyAuth(c, ctx);
+        return c;
+    }
+
+    /**
+     * Открывает поток APK: сначала обычная ссылка на релиз, при неудаче —
+     * адрес файла через API GitHub. Нужно, потому что в закрытом репозитории
+     * ссылка «releases/download/...» отдаёт файл не во всех клиентах.
+     * Возвращает готовое соединение (код 200) или null.
+     */
+    private static HttpURLConnection openApk(Context ctx, String url) {
+        String fallback = apiAssetUrl;
+        try {
+            HttpURLConnection c = connect(ctx, url);
+            int code = c.getResponseCode();
+            if (code == 200) return c;
+            CrashGuard.log(ctx, "загрузка APK: ответ " + code + " на " + url);
+            c.disconnect();
+        } catch (Throwable t) {
+            CrashGuard.log(ctx, "загрузка APK: " + url, t);
+        }
+        if (hasToken(ctx) && fallback != null && !fallback.equals(url)) {
+            try {
+                HttpURLConnection c2 = connect(ctx, fallback);
+                int code2 = c2.getResponseCode();
+                if (code2 == 200) return c2;
+                CrashGuard.log(ctx, "загрузка APK: ответ " + code2 + " на запасной адрес");
+                c2.disconnect();
+            } catch (Throwable t) {
+                CrashGuard.log(ctx, "загрузка APK, запасной адрес: " + fallback, t);
+            }
+        }
+        return null;
+    }
+
     private static void downloadWithDialog(final Activity act, final String urlStr, final String ver) {
         final File dir = new File(act.getFilesDir(), "updates");
         if (!dir.exists() && !dir.mkdirs()) {
@@ -520,15 +564,9 @@ final class UpdateManager {
         new Thread(() -> {
             HttpURLConnection c = null;
             try {
-                c = (HttpURLConnection) new URL(urlStr).openConnection();
-                c.setConnectTimeout(15000);
-                c.setReadTimeout(60000);
-                c.setRequestProperty("User-Agent", "ZI-Office-Update");
-                c.setRequestProperty("Accept", "application/octet-stream");
-                applyAuth(c, act);
-                int code = c.getResponseCode();
-                if (code != 200) {
-                    main().post(() -> finishDialog(act, dlg, apk, "Не удалось скачать: HTTP " + code));
+                c = openApk(act, urlStr);
+                if (c == null) {
+                    main().post(() -> finishDialog(act, dlg, apk, "Не удалось скачать обновление. Проверьте интернет."));
                     return;
                 }
                 long total = c.getContentLengthLong();
