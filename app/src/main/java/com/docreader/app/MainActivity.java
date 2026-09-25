@@ -22,7 +22,50 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btnAbout).setOnClickListener(v -> openAbout());
         findViewById(R.id.btnCall).setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:+375293371412"))); } catch (Exception e) { Toast.makeText(this, "+375293371412", Toast.LENGTH_LONG).show(); } });
         tb.setOnLongClickListener(v -> { openAbout(); return true; });
-        if (getIntent() != null && Intent.ACTION_VIEW.equals(getIntent().getAction()) && getIntent().getData() != null) openUri(getIntent().getData());
+        handleIntent(getIntent());
+        askAboutCrash();
+    }
+
+    /** Файл могут прислать по-разному: «Открыть с помощью» (VIEW) или «Поделиться» (SEND). */
+    private void handleIntent(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        Uri uri = null;
+        if (Intent.ACTION_VIEW.equals(action)) {
+            uri = intent.getData();
+            if (uri == null) uri = firstUri(intent.getClipData());
+        } else if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            uri = streamUri(intent);
+            if (uri == null) uri = firstUri(intent.getClipData());
+        }
+        if (uri != null) openUri(uri);
+    }
+
+    /** Первая ссылка из набора (мессенджеры кладут файлы в ClipData). */
+    private static Uri firstUri(android.content.ClipData clip) {
+        try {
+            if (clip == null || clip.getItemCount() == 0) return null;
+            return clip.getItemAt(0).getUri();
+        } catch (Throwable t) { return null; }
+    }
+
+    /**
+     * Ссылка на файл из EXTRA_STREAM. Читаем через extras без приведения типов:
+     * некоторые приложения кладут туда список (ArrayList&lt;Uri&gt;), и обычный
+     * getParcelableExtra() падает с ClassCastException.
+     */
+    private static Uri streamUri(Intent intent) {
+        try {
+            android.os.Bundle extras = intent.getExtras();
+            if (extras == null) return null;
+            Object raw = extras.get(Intent.EXTRA_STREAM);
+            if (raw instanceof Uri) return (Uri) raw;
+            if (raw instanceof java.util.List) {
+                for (Object o : (java.util.List<?>) raw) if (o instanceof Uri) return (Uri) o;
+            }
+            if (raw instanceof String) return Uri.parse((String) raw);
+        } catch (Throwable ignored) { }
+        return null;
     }
     @Override public boolean onCreateOptionsMenu(android.view.Menu menu) { getMenuInflater().inflate(R.menu.main, menu); return true; }
     @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
@@ -36,24 +79,114 @@ public class MainActivity extends AppCompatActivity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) openUri(intent.getData());
+        handleIntent(intent);
     }
     @Override protected void onResume() { super.onResume(); fillRecent(); UpdateManager.checkIfDue(this); }
     private void openUri(Uri uri) {
-        if (uri == null) return;
-        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); } catch (Exception ignored) {}
-        String name = FileKind.name(this, uri); String kind = FileKind.fromNameAndMime(name, FileKind.mime(this, uri));
-        if (FileKind.UNKNOWN.equals(kind)) {
-            java.io.File tmp = new java.io.File(getCacheDir(), "sniff-" + System.currentTimeMillis());
-            try (java.io.InputStream in = getContentResolver().openInputStream(uri); java.io.FileOutputStream fo = new java.io.FileOutputStream(tmp)) {
-                if (in != null) { byte[] b = new byte[8192]; int n; while ((n = in.read(b)) > 0) fo.write(b, 0, n); }
-            } catch (Exception ignored) {}
-            kind = FileKind.sniff(tmp); try { tmp.delete(); } catch (Exception ignored) {}
+        try {
+            openUriChecked(uri);
+        } catch (Throwable t) {
+            CrashGuard.log(this, "открытие файла " + uri, t);
+            Toast.makeText(this, "Не удалось открыть файл", Toast.LENGTH_LONG).show();
         }
-        if (FileKind.UNKNOWN.equals(kind)) { Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show(); return; }
-        RecentStore.add(this, uri, name, kind);
-        Intent i = new Intent(this, ViewerActivity.class); i.setData(uri); i.putExtra("name", name); i.putExtra("kind", kind); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION); startActivity(i);
     }
+
+    private void openUriChecked(Uri uri) {
+        if (uri == null) return;
+        // file:// нельзя передавать между окнами — Android 11+ роняет приложение
+        // (FileUriExposedException). Копируем такой файл в свою папку и работаем
+        // с безопасной ссылкой FileProvider.
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT);
+        if ("file".equals(scheme)) {
+            Uri safe = copyLocalToCache(uri);
+            if (safe == null) {
+                Toast.makeText(this, "Нет доступа к файлу — выберите его кнопкой «Открыть»", Toast.LENGTH_LONG).show();
+                return;
+            }
+            openUriChecked(safe);
+            return;
+        }
+        if (!"content".equals(scheme) && !"android.resource".equals(scheme)) {
+            Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show();
+            return;
+        }
+        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+        String name = FileKind.name(this, uri);
+        String kind = FileKind.fromNameAndMime(name, FileKind.mime(this, uri));
+        java.io.File copy = null;
+        if (FileKind.UNKNOWN.equals(kind)) {
+            // незнакомый тип — определяем по содержимому (копия пригодится и просмотрщику)
+            copy = copyToCache(uri, 40 * 1024 * 1024L);
+            if (copy != null) {
+                kind = FileKind.sniff(copy);
+                if (FileKind.UNKNOWN.equals(kind)) { try { copy.delete(); } catch (Exception ignored) { } copy = null; }
+            }
+        }
+        if (FileKind.UNKNOWN.equals(kind)) {
+            Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show();
+            return;
+        }
+        Uri pass = uri;
+        if (copy != null) {
+            try { pass = androidx.core.content.FileProvider.getUriForFile(this, "com.docreader.app.files", copy); }
+            catch (Exception e) { copy = null; }
+        }
+        RecentStore.add(this, pass, name, kind);
+        Intent i = new Intent(this, ViewerActivity.class);
+        i.setData(pass); i.putExtra("name", name); i.putExtra("kind", kind);
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        startActivity(i);
+    }
+
+    /** Копирует содержимое в кэш приложения, возвращает безопасную ссылку. */
+    private Uri copyLocalToCache(Uri fileUri) {
+        try {
+            String path = fileUri.getPath();
+            if (path == null) return null;
+            java.io.File src = new java.io.File(path);
+            if (!src.exists() || !src.isFile() || !src.canRead()) return null;
+            java.io.File dst = new java.io.File(getCacheDir(), "in-" + System.currentTimeMillis() + "-" + FileKind.safeFileName(src.getName()));
+            try (java.io.InputStream in = new java.io.FileInputStream(src); java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+                byte[] b = new byte[65536]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            }
+            return androidx.core.content.FileProvider.getUriForFile(this, "com.docreader.app.files", dst);
+        } catch (Throwable t) {
+            CrashGuard.log(this, "копирование file://-файла", t);
+            return null;
+        }
+    }
+
+    /** Копия файла из content:// в кэш (только если он не больше limit). */
+    private java.io.File copyToCache(Uri uri, long limit) {
+        java.io.File dst = new java.io.File(getCacheDir(), "in-" + System.currentTimeMillis());
+        try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+             java.io.FileOutputStream out = new java.io.FileOutputStream(dst)) {
+            if (in == null) { dst.delete(); return null; }
+            byte[] b = new byte[65536]; long total = 0; int n;
+            while ((n = in.read(b)) > 0) {
+                total += n;
+                if (total > limit) { dst.delete(); return null; } // слишком большой — не копируем
+                out.write(b, 0, n);
+            }
+            return dst.length() > 0 ? dst : null;
+        } catch (Throwable t) {
+            CrashGuard.log(this, "чтение файла " + uri, t);
+            try { dst.delete(); } catch (Exception ignored) { }
+            return null;
+        }
+    }
+
+    /** После сбоя предлагаем отправить отчёт разработчику. */
+    private void askAboutCrash() {
+        if (!CrashGuard.hasCrashReport(this)) return;
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Приложение закрылось с ошибкой")
+                .setMessage("В прошлый раз ZI Office завершился с ошибкой. Отправить отчёт разработчику?")
+                .setPositiveButton("Отправить", (d, w) -> startActivity(new Intent(this, CrashActivity.class)))
+                .setNegativeButton("Позже", null)
+                .show();
+    }
+
     private void fillRecent() {
         recentList.removeAllViews();
         java.util.List<RecentStore.Item> items = RecentStore.load(this);

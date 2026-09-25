@@ -137,6 +137,9 @@
             <TextView android:id="@+id/q7" style="@style/FaqQuestion" android:text="Не видно файла на телефоне"/>
             <TextView android:id="@+id/a7" style="@style/FaqAnswer" android:visibility="gone" android:text="Открывайте файл кнопкой «Открыть» — Android даёт доступ только к выбранному файлу. Для работы с папкой целиком подключите её через «Облако» → «Папка диска»."/>
 
+            <TextView android:id="@+id/q8" style="@style/FaqQuestion" android:text="Приложение вылетает при открытии файла"/>
+            <TextView android:id="@+id/a8" style="@style/FaqAnswer" android:visibility="gone" android:text="Файлы из мессенджеров и файловых менеджеров приходят по временной ссылке, и доступ к ним иногда пропадает. Откройте файл кнопкой «Открыть» — так доступ сохраняется. Если приложение всё же вылетело, при следующем запуске появится предложение отправить отчёт об ошибке: нажмите «Отправить» — это помогает быстро найти причину."/>
+
             <TextView
                 android:id="@+id/footer"
                 android:textColor="@color/muted"

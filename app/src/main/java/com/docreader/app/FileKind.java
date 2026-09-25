@@ -96,6 +96,16 @@ final class FileKind {
         }
         return sb.toString();
     }
+    /** Имя файла без каталогов и опасных символов — годится для своей папки. */
+    static String safeFileName(String name) {
+        if (name == null) return "file";
+        String n = name.replace('\\', '/');
+        int slash = n.lastIndexOf('/'); if (slash >= 0) n = n.substring(slash + 1);
+        n = n.replaceAll("[^\\p{L}\\p{N}._ ()\\[\\]-]", "_").trim();
+        if (n.isEmpty() || n.startsWith(".")) n = "file-" + n;
+        return n.length() > 120 ? n.substring(n.length() - 120) : n;
+    }
+
     static String displayExt(String name, String kind) {
         String e = ext(name); if (!e.isEmpty()) return e.toUpperCase();
         if (kind != null && !UNKNOWN.equals(kind) && !kind.isEmpty()) return kind.toUpperCase(); return "FILE";

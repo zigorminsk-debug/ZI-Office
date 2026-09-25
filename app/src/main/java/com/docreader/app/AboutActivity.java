@@ -16,10 +16,10 @@ import com.google.android.material.button.MaterialButton;
  */
 public class AboutActivity extends AppCompatActivity {
     private static final int[] QUESTIONS = {
-            R.id.q1, R.id.q2, R.id.q3, R.id.q4, R.id.q5, R.id.q6, R.id.q7
+            R.id.q1, R.id.q2, R.id.q3, R.id.q4, R.id.q5, R.id.q6, R.id.q7, R.id.q8
     };
     private static final int[] ANSWERS = {
-            R.id.a1, R.id.a2, R.id.a3, R.id.a4, R.id.a5, R.id.a6, R.id.a7
+            R.id.a1, R.id.a2, R.id.a3, R.id.a4, R.id.a5, R.id.a6, R.id.a7, R.id.a8
     };
 
     private MaterialButton btnUpdate;

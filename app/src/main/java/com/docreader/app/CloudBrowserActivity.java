@@ -27,7 +27,7 @@ public class CloudBrowserActivity extends AppCompatActivity {
     }
     private void download(String url, String name) {
         if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
-        final String fileName = safeName(name);
+        final String fileName = FileKind.safeFileName(name);
         Toast.makeText(this, "Скачиваем…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             try {
@@ -39,15 +39,6 @@ public class CloudBrowserActivity extends AppCompatActivity {
                 runOnUiThread(() -> { if (isFinishing() || isDestroyed()) return; if (FileKind.UNKNOWN.equals(kind)) Toast.makeText(this, getString(R.string.unsupported), Toast.LENGTH_LONG).show(); else ViewerActivity.openLocal(this, out, out.getName(), kind); });
             } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "Откройте файл через «Папка диска»", Toast.LENGTH_LONG).show()); }
         }).start();
-    }
-    /** Имя из ссылки нельзя использовать как путь: убираем каталоги и «..». */
-    private static String safeName(String name) {
-        if (name == null) return "cloud.bin";
-        String n = name.replace('\\', '/');
-        int slash = n.lastIndexOf('/'); if (slash >= 0) n = n.substring(slash + 1);
-        n = n.replaceAll("[^\\p{L}\\p{N}._ ()\\[\\]-]", "_").trim();
-        if (n.isEmpty() || n.startsWith(".")) n = "cloud-" + n;
-        return n.length() > 120 ? n.substring(n.length() - 120) : n;
     }
     @Override public void onBackPressed() { if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed(); }
     @Override protected void onPause() { super.onPause(); CloudSession.persist(this, cloud); }

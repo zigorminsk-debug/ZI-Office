@@ -46,7 +46,7 @@ public class ViewerActivity extends AppCompatActivity {
         web = findViewById(R.id.web); toolWeb = findViewById(R.id.toolWeb); pdfZoom = findViewById(R.id.pdfZoom); webZoom = findViewById(R.id.webZoom);
         readerBar = findViewById(R.id.readerBar); btnPlay = findViewById(R.id.btnTtsPlay);
         Intent in = getIntent(); source = in.getData();
-        if (source == null && in.getParcelableExtra(Intent.EXTRA_STREAM) instanceof Uri) source = in.getParcelableExtra(Intent.EXTRA_STREAM);
+        if (source == null) source = streamUri(in);
         displayName = in.getStringExtra("name"); if (displayName == null) displayName = source == null ? "document" : FileKind.name(this, source);
         String k = in.getStringExtra("kind"); if (k == null || k.isEmpty()) k = FileKind.fromNameAndMime(displayName, source == null ? null : FileKind.mime(this, source));
         fileExt = FileKind.ext(displayName); viewerKind = FileKind.viewerKind(k.isEmpty() ? fileExt : k);
@@ -77,10 +77,12 @@ public class ViewerActivity extends AppCompatActivity {
                 if (inStream == null) throw new Exception("null");
                 byte[] b = new byte[8192]; int n; while ((n = inStream.read(b)) > 0) fo.write(b, 0, n);
             } catch (Exception e) {
+                CrashGuard.log(this, "чтение содержимого " + source, e);
                 Toast.makeText(this, "Не удалось открыть файл. Доступ мог быть отозван — откройте его заново.", Toast.LENGTH_LONG).show();
                 finish(); return;
             }
             if (cacheFile.length() == 0) { Toast.makeText(this, "Файл пуст", Toast.LENGTH_LONG).show(); finish(); return; }
+            if (cacheFile.length() > 0 && !cacheFile.canRead()) { Toast.makeText(this, "Файл недоступен", Toast.LENGTH_LONG).show(); finish(); return; }
             if (cacheFile != null && cacheFile.exists()) {
                 String sniffed = FileKind.sniff(cacheFile);
                 if (!FileKind.UNKNOWN.equals(sniffed)) {
@@ -98,6 +100,20 @@ public class ViewerActivity extends AppCompatActivity {
             nativePdf = false; pdfZoom.setVisibility(View.GONE); if (webZoom != null) webZoom.setVisibility(View.VISIBLE); web.loadUrl("http://app.local/viewer.html");
         }
     }
+    /** Ссылка из EXTRA_STREAM без приведения типов (список Uri не должен ронять приложение). */
+    private static Uri streamUri(Intent intent) {
+        try {
+            android.os.Bundle extras = intent.getExtras();
+            if (extras == null) return null;
+            Object raw = extras.get(Intent.EXTRA_STREAM);
+            if (raw instanceof Uri) return (Uri) raw;
+            if (raw instanceof java.util.List) {
+                for (Object o : (java.util.List<?>) raw) if (o instanceof Uri) return (Uri) o;
+            }
+        } catch (Throwable ignored) { }
+        return null;
+    }
+
     private void setupWeb(WebView w) {
         WebSettings s = w.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setAllowFileAccess(true);
         s.setSupportZoom(false); s.setBuiltInZoomControls(false); s.setDisplayZoomControls(false);
