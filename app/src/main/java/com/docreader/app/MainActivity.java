@@ -36,6 +36,12 @@ public class MainActivity extends AppCompatActivity {
     private void handleIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
+        // в журнал — что именно прислал мессенджер: по отчёту видно причину
+        try {
+            CrashGuard.log(this, "получен файл: action=" + action + " | тип=" + intent.getType()
+                    + " | ссылка=" + intent.getData()
+                    + " | вложений=" + (intent.getClipData() == null ? 0 : intent.getClipData().getItemCount()));
+        } catch (Throwable ignored) { }
         Uri uri = null;
         if (Intent.ACTION_VIEW.equals(action)) {
             uri = intent.getData();
@@ -107,28 +113,38 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Не сейчас", null)
                 .show();
     }
-    private void openUri(Uri uri) {
-        try {
-            openUriChecked(uri);
-        } catch (Throwable t) {
-            CrashGuard.log(this, "открытие файла " + uri, t);
-            openProblem("Не удалось открыть файл", "Файл: " + uri + "\n\nОшибка: " + t);
+    /** Результат подготовки файла: либо готовый экран просмотра, либо причина отказа. */
+    private static final class OpenResult {
+        final Intent intent; final Uri uri; final String name; final String kind;
+        final String title; final String details;
+        OpenResult(Intent intent, Uri uri, String name, String kind, String title, String details) {
+            this.intent = intent; this.uri = uri; this.name = name; this.kind = kind;
+            this.title = title; this.details = details;
+        }
+        static OpenResult problem(String title, String details) {
+            return new OpenResult(null, null, null, null, title, details);
         }
     }
 
     /**
-     * Открытие файла из другого приложения (мессенджер, файловый менеджер,
-     * «Поделиться»).
+     * Открытие файла, пришедшего из другого приложения (мессенджер, файловый
+     * менеджер, «Поделиться»).
      *
      * Доступ к такому файлу даётся временно и может пропасть, а ссылку file://
      * нельзя передавать между окнами (Android 11+ закрывает за это приложение).
      * Поэтому сразу делаем свою копию в папке приложения и дальше работаем
      * только с ней — файл открывается всегда, в том числе из «недавних».
+     *
+     * Копируем в фоновом потоке: провайдер мессенджера может отдавать файл
+     * медленно (расшифровка, загрузка из сети), и в главном потоке это
+     * выглядело бы как «приложение не отвечает».
      */
-    private void openUriChecked(Uri uri) {
+    private void openUri(final Uri uri) {
         if (uri == null) return;
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT);
-        boolean local = "file".equals(scheme);
+        String scheme;
+        try { scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT); }
+        catch (Throwable t) { scheme = ""; }
+        final boolean local = "file".equals(scheme);
         if (!local && !"content".equals(scheme) && !"android.resource".equals(scheme)) {
             openProblem("Файл не открывается", "Ссылка вида «" + scheme + "» не поддерживается.\n\nОткройте файл кнопкой «Открыть».");
             return;
@@ -137,27 +153,62 @@ public class MainActivity extends AppCompatActivity {
             try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
         }
 
-        String name = local ? lastSegment(uri) : FileKind.name(this, uri);
-        String mime = local ? null : FileKind.mime(this, uri);
+        final android.app.ProgressDialog wait = new android.app.ProgressDialog(this);
+        wait.setMessage("Открываю файл…");
+        wait.setCancelable(false);
+        try { wait.show(); } catch (Throwable ignored) { }
+
+        new Thread(() -> {
+            OpenResult r;
+            try {
+                r = prepareOpen(uri);
+            } catch (Throwable t) {
+                CrashGuard.log(this, "подготовка файла " + uri, t);
+                r = OpenResult.problem("Не удалось открыть файл", "Файл: " + uri + "\n\nОшибка: " + t);
+            }
+            final OpenResult res = r;
+            runOnUiThread(() -> {
+                try { if (wait.isShowing()) wait.dismiss(); } catch (Throwable ignored) { }
+                if (isFinishing() || isDestroyed()) return;
+                if (res.intent == null) { openProblem(res.title, res.details); return; }
+                try { RecentStore.add(this, res.uri, res.name, res.kind); } catch (Throwable ignored) { }
+                CrashGuard.log(this, "открытие: " + res.name + " | тип=" + res.kind + " | ссылка=" + res.uri);
+                try {
+                    startActivity(res.intent);
+                } catch (Throwable t) {
+                    CrashGuard.log(this, "запуск просмотра " + res.name, t);
+                    openProblem("Не удалось открыть документ", "Файл: " + res.name + "\n\nОшибка: " + t);
+                }
+            });
+        }, "open-file").start();
+    }
+
+    /** Разбор файла и копирование — выполняется в фоновом потоке. */
+    private OpenResult prepareOpen(Uri uri) {
+        String name; String mime;
+        if ("file".equalsIgnoreCase(uri.getScheme())) {
+            name = lastSegment(uri);
+            mime = null;
+        } else {
+            name = FileKind.name(this, uri);
+            mime = FileKind.mime(this, uri);
+        }
         String kind = FileKind.fromNameAndMime(name, mime);
 
-        // своя копия: переживает отзыв доступа и нужна для просмотра без задержек
-        java.io.File copy = copyToInbox(uri, name);
-        if (local && copy == null) {
-            openProblem("Нет доступа к файлу",
+        java.io.File copy = copyToInbox(uri, name);   // своя копия: см. openUri()
+        if (copy == null && "file".equalsIgnoreCase(uri.getScheme())) {
+            return OpenResult.problem("Нет доступа к файлу",
                     "Файл: " + name + "\n\nAndroid не даёт читать файлы по прямой ссылке file://. "
                             + "Откройте его кнопкой «Открыть» — так доступ сохранится.");
-            return;
         }
         if (copy != null && FileKind.UNKNOWN.equals(kind)) kind = FileKind.sniff(copy);
 
         if (FileKind.UNKNOWN.equals(kind)) {
             if (copy != null) { try { copy.delete(); } catch (Exception ignored) { } }
-            openProblem("Формат не поддерживается",
-                    "Файл: " + name + "\nТип: " + (mime == null ? "неизвестен" : mime)
+            return OpenResult.problem("Формат не поддерживается",
+                    "Файл: " + name + "\nТип: " + (mime == null || mime.isEmpty() ? "неизвестен" : mime)
                             + "\n\nПоддерживаются PDF, Word, Excel, PowerPoint, RTF, TXT и CSV. "
                             + "Файлы Numbers/WPS сохраните как .xlsx или .docx, с файлов с паролем снимите пароль.");
-            return;
         }
         if (FileKind.ext(name).isEmpty() && !"txt".equals(kind)) name = name + "." + kind;
 
@@ -166,13 +217,10 @@ public class MainActivity extends AppCompatActivity {
             try { pass = androidx.core.content.FileProvider.getUriForFile(this, "com.docreader.app.files", copy); }
             catch (Throwable t) { CrashGuard.log(this, "FileProvider для " + copy, t); }
         }
-        // запись в журнал: по отчёту видно, что именно открывали и как определился тип
-        CrashGuard.log(this, "открытие: " + name + " | mime=" + mime + " | тип=" + kind + " | своя копия=" + (copy != null));
-        RecentStore.add(this, pass, name, kind);
         Intent i = new Intent(this, ViewerActivity.class);
         i.setData(pass); i.putExtra("name", name); i.putExtra("kind", kind);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-        startActivity(i);
+        return new OpenResult(i, pass, name, kind, null, null);
     }
 
     /** Последний сегмент ссылки как имя файла. */

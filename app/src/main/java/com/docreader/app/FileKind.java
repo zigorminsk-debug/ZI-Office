@@ -54,6 +54,18 @@ final class FileKind {
         }
         return UNKNOWN;
     }
+    /** Имена внутренних потоков OLE-документа (WordDocument, Workbook, ...). */
+    private static String oleHint(java.io.File file) {
+        try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
+            byte[] head = new byte[(int) Math.min(512 * 1024, file.length())];
+            int n = in.read(head);
+            if (n <= 0) return "";
+            String raw = new String(head, 0, n, java.nio.charset.StandardCharsets.ISO_8859_1);
+            // имена в OLE хранятся в UTF-16, поэтому убираем нулевые байты
+            return raw.replace(String.valueOf((char) 0), "").toLowerCase(java.util.Locale.ROOT);
+        } catch (Exception e) { return ""; }
+    }
+
     static String sniff(java.io.File file) {
         if (file == null || !file.exists() || file.length() < 4) return UNKNOWN;
         byte[] b = new byte[8];
@@ -61,7 +73,15 @@ final class FileKind {
             int n = in.read(b); if (n < 4) return UNKNOWN;
         } catch (Exception e) { return UNKNOWN; }
         if (b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F') return "pdf";
-        if ((b[0] & 0xFF) == 0xD0 && (b[1] & 0xFF) == 0xCF && (b[2] & 0xFF) == 0x11 && (b[3] & 0xFF) == 0xE0) return "xls";
+        if ((b[0] & 0xFF) == 0xD0 && (b[1] & 0xFF) == 0xCF && (b[2] & 0xFF) == 0x11 && (b[3] & 0xFF) == 0xE0) {
+            // старые форматы Word/Excel/PowerPoint лежат в одном контейнере (OLE):
+            // различаем их по имени внутреннего потока, иначе .doc открывался как Excel
+            String ole = oleHint(file);
+            if (ole.contains("worddocument")) return "doc";
+            if (ole.contains("powerpoint")) return "ppt";
+            if (ole.contains("workbook") || ole.contains("book")) return "xls";
+            return "xls";
+        }
         if (b[0] == 'P' && b[1] == 'K') {
             String names = zipEntryHint(file);
             if (names.contains("xl/") || names.contains("workbook.xml") || names.contains("spreadsheetml")) return "xlsx";
@@ -71,10 +91,23 @@ final class FileKind {
             if (names.contains("content.xml") && names.contains("mimetype")) return "ods";
             return UNKNOWN;
         }
+        String head = "";
         try (java.io.FileInputStream in = new java.io.FileInputStream(file)) {
-            byte[] head = new byte[(int) Math.min(256, file.length())]; int n = in.read(head);
-            String s = new String(head, 0, Math.max(0, n), java.nio.charset.StandardCharsets.ISO_8859_1).toLowerCase();
-            if (s.contains("spreadsheetml") || s.contains("workbook") || s.contains("ss:worksheet")) return "xls";
+            byte[] buf = new byte[(int) Math.min(4096, file.length())]; int n = in.read(buf);
+            head = new String(buf, 0, Math.max(0, n), java.nio.charset.StandardCharsets.ISO_8859_1);
+            String low = head.toLowerCase(java.util.Locale.ROOT);
+            if (low.startsWith("{\\rtf")) return "rtf";
+            if (low.contains("<html") || low.contains("<!doctype html")) return "txt";
+            if (low.contains("spreadsheetml") || low.contains("workbook") || low.contains("ss:worksheet")) return "xls";
+            // обычный текст: почти нет управляющих символов — открываем как txt
+            int bad = 0;
+            for (int i = 0; i < head.length(); i++) {
+                char c = head.charAt(i);
+                if (c < 9 || (c > 13 && c < 32)) bad++;
+            }
+            if (head.length() > 0 && bad * 200 < head.length()) {
+                return head.indexOf(';') >= 0 && head.indexOf('\n') >= 0 ? "csv" : "txt";
+            }
         } catch (Exception ignored) {}
         return UNKNOWN;
     }
