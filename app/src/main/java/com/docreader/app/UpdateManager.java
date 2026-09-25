@@ -89,6 +89,9 @@ final class UpdateManager {
         try {
             JobScheduler js = (JobScheduler) ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (js == null) return;
+            // Задание уже стоит? не трогаем: пересоздание сбрасывало бы отсчёт
+            // периода, и при частых запусках фоновая проверка могла не сработать.
+            if (js.getPendingJob(JOB_ID) != null) return;
             JobInfo job = new JobInfo.Builder(JOB_ID, new ComponentName(ctx, UpdateJobService.class))
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                     .setPersisted(true)                       // задание переживёт перезагрузку
@@ -207,9 +210,10 @@ final class UpdateManager {
      * уже скачано — предлагаем установить; иначе проверяем не чаще раза в 6 ч.
      */
     static void onForeground(final Activity act) {
-        if (downloadedFile(act) != null && isReady(act, downloadedVersion(act))) {
-            promptInstall(act);
-            return;
+        String ver = downloadedVersion(act);
+        if (ver != null && downloadedFile(act) != null) {
+            if (isNewer(ver, BuildConfig.VERSION_NAME)) { promptInstall(act); return; }
+            clearDownloaded(act); // эту версию уже установили — файл больше не нужен
         }
         checkIfDue(act);
     }
